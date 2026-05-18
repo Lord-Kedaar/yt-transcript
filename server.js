@@ -178,21 +178,32 @@ Output ONLY a JSON object with a single field "output": "..." containing the rec
 
     const msg = choice.message || {};
 
-    // Try msg.content first; only if empty, try msg.reasoning_content
-    const rawContent = msg.content || msg.reasoning_content || '';
+    // Prefer msg.content; if empty, it's probably a parsing error on the model side
+    let rawContent = msg.content || '';
+    const reasoning = msg.reasoning_content || '';
+
+    // If content is empty but reasoning is non-empty, try extracting JSON from reasoning
+    if (!rawContent.trim() && reasoning.trim()) {
+      rawContent = reasoning;
+    }
 
     let reconstructed = rawContent.trim();
+    // Strip possible Markdown JSON code block markers
+    const cleaned = reconstructed.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '').trim();
     try {
-      const parsed = JSON.parse(reconstructed);
-      reconstructed = parsed.output || reconstructed;
-    } catch { /* not JSON, use rawContent */ }
+      const parsed = JSON.parse(cleaned);
+      reconstructed = parsed.output || cleaned;
+    } catch {
+      // Not valid JSON - use cleaned text without code block
+      reconstructed = cleaned;
+    }
 
     if (!reconstructed.trim()) {
       return res.status(500).json({ error: 'LM Studio returned an empty response.' });
     }
 
     // Cache the reconstruction result by a hash of snippet texts
-    const cacheKey = `reconstruct:${btoa(snippets.map(s => s.text).join(' '))}`;
+    const cacheKey = `reconstruct:${Buffer.from(snippets.map(s => s.text).join(' ')).toString('base64')}`;
     setCache(cacheKey, { reconstructed, snippetCount: snippets.length, model: LM_STUDIO_MODEL });
 
     res.json({
@@ -202,9 +213,9 @@ Output ONLY a JSON object with a single field "output": "..." containing the rec
     });
 
   } catch (err) {
-    console.error('LM Studio request error:', err.message);
+    console.error('Reconstruct error:', err);
     res.status(502).json({
-      error: 'Could not connect to LM Studio. Make sure it is running on localhost:1234 with a model loaded.',
+      error: err.message || 'Reconstruction failed',
     });
   }
 });

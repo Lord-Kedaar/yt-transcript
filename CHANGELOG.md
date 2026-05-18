@@ -12,6 +12,9 @@ All notable changes to this project are documented here.
   - Result: URL `https://youtu.be/hGnn05ccwNc` (Hermes Agent) now reconstructs in ~156s instead of crashing.
 - **Frontend error UX during reconstruct** — added live countdown timer (`AI reconstructing... (42s)`) so users know the process is running, not hung. Previous "Could not connect to LM Studio" error was stale from prior timeout, not actual LM failure.
 - **Clear stale errors** — clicking "Reconstruct with AI" now clears old error banner before starting new request.
+- **Reconstruct crashes on Unicode/emoji** — `btoa()` in cache key threw `InvalidCharacterError` when transcript text contained emojis (e.g. "🤯" in video title). This error was caught by `catch(err)` and replaced with misleading "Could not connect to LM Studio." message. Fixed by switching to `Buffer.from(text).toString('base64')` which handles UTF-8 correctly.
+- **Reconstruct returns raw markdown code block** — LM Studio occasionally wraps JSON in ```json ... ``` markdown. Backend now strips code fence markers before `JSON.parse()`.
+- **Reconstruct empty content from reasoning model** — when LM Studio returns empty `msg.content` but non-empty `msg.reasoning_content`, the backend now falls back to reasoning text and extracts JSON from it.
 
 ---
 
