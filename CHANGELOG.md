@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented here.
 
+## [Updated] — Backend infrastructure rewrite + frontend fixes
+
+### Changed
+
+- **Replaced `youtube-transcript` with `youtube-transcript-plus`** — addresses broken API compatibility that caused "transcript not available" on many videos.
+- **Added `.env` configuration** — `PORT`, `LM_STUDIO_URL`, `LM_STUDIO_MODEL`, `CACHE_TTL_MINUTES` all configurable via environment variables.
+- **Added `LM Studio health check`** — `/api/lm-status` endpoint; `/api/health` now includes LM Studio connection status and model name.
+- **Added in-memory cache** — transcript fetches and reconstructions cached with TTL (default 60 min), keyed by video ID and snippet hash.
+- **Replaced `cleanReasoningOutput()` regex hack** — structured JSON output (`{"output": "..."}`) from LM Studio; removed 35 lines of brittle regex.
+- **Added production static serving** — Express now serves `client/dist/` and handles SPA routing in production.
+- **Improved error handling** — 503 if LM Studio unreachable; 502 on LM error; `AbortSignal.timeout(120s)` on reconstruction fetch.
+- **Fixed SRT end timestamps** — uses next segment start instead of `start + duration` to prevent overlap.
+- **Deduplicated CSS** — removed duplicate rules for `.reset-button`, `.export-bar`, `.empty-state`, `.video-info`.
+- **Fixed timestamp field mapping** — `youtube-transcript-plus` returns `offset` not `start` in segment objects.
+
+### Fixed
+
+- Core transcription pipeline now works reliably with `youtube-transcript-plus` v2.
+- LM Studio integration is observable and debuggable.
+- Production build output is now served by Express.
+
+### Known Issues (remaining)
+
+- No `.gitignore` present — `.env` and `node_modules` should be ignored.
+- No error boundaries in React.
+- No video thumbnail / metadata beyond title.
+
+---
+
 ## [Unreleased] — Initial development
 
 ### Added

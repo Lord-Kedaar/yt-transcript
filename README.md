@@ -26,8 +26,9 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 | Layer | Stack |
 |---|---|
 | Frontend | React 18 + Vite 5, dark theme CSS |
-| Backend | Node.js + Express 4, `youtube-transcript` npm package |
-| LLM | LM Studio local server (`localhost:1234`), model `qwen3.6-35b-a3b-mlx-nvfp4` |
+| Backend | Node.js + Express 4, `youtube-transcript-plus` npm package |
+| LLM | LM Studio local server (`localhost:1234`), configurable model via `.env` |
+| Cache | In-memory Map with TTL |
 | Launch | `manage.sh` (macOS LaunchAgents) or `start.sh` (foreground) |
 
 ## Quickstart
@@ -58,9 +59,10 @@ chmod +x manage.sh
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/health` | Health check — returns `{ status: "ok" }` |
-| GET | `/api/transcript?url=<youtube-url>` | Fetch captions for a video |
-| POST | `/api/reconstruct` | Reconstruct fragmented text (body: `{ snippets: [...] }`) |
+| GET | `/api/health` | Health check + LM Studio connection status |
+| GET | `/api/lm-status` | LM Studio model list and load status |
+| GET | `/api/transcript?url=<youtube-url>` | Fetch captions for a video (cached) |
+| POST | `/api/reconstruct` | Reconstruct fragmented text (structured JSON output) |
 
 ### URLs
 
@@ -95,36 +97,33 @@ yt-transcript/
 
 ## Known Issues & TODO
 
-### Critical — must fix
+### Fixed in this update
 
-- **[ ] `youtube-transcript` package is unmaintained / broken** — the npm package has known issues with YouTube's updated API. Many videos return "transcript not available" even when captions exist. **Fix needed:** switch to a maintained alternative (e.g., `youtubei.js`, `ytdl-core` with transcript parsing, or a direct YouTube IFrame API approach).
-- **[ ] LM Studio dependency is fragile** — the `/api/reconstruct` endpoint hardcodes `localhost:1234`. If LM Studio is not running or the model is unloaded, reconstruction fails silently. **Fix needed:** add a health check before reconstruct, show a clear error in the UI, and make the LM Studio URL configurable (env var or settings).
-- **[ ] `qwen3.6-35b` reasoning output cleanup is hacky** — the `cleanReasoningOutput()` function strips thinking-process markers via regex, but this is brittle. Different model versions output different formats. **Fix needed:** use a structured response format (e.g., JSON with explicit `output` field) or switch to a model that doesn't use extended thinking for this task.
+- **[x] `youtube-transcript` package broken** → replaced with `youtube-transcript-plus` v2
+- **[x] LM Studio dependency fragile** → health check endpoint, configurable URL/model, timeout handling
+- **[x] `cleanReasoningOutput()` regex hack** → replaced with structured JSON output from LM Studio
+- **[x] No caching** → in-memory cache with TTL for transcripts and reconstructions
+- **[x] Build output not served** → Express static serving for `client/dist` + SPA catch-all
+- **[x] No environment configuration** → `.env` file support via `dotenv`
+- **[x] SRT export timestamp overlap** → uses next segment start as end time
+- **[x] CSS duplicate rules** — `.reset-button`, `.export-bar`, `.empty-state`, `.video-info` deduplicated
 
-### High priority
+### Still open
 
-- **[ ] No caching** — every transcript fetch hits YouTube fresh. Add in-memory or file-based caching by video ID.
-- **[ ] No rate-limit handling** — repeated requests to YouTube or LM Studio can get throttled. Add retry logic with exponential backoff.
-- **[ ] Build script doesn't work** — `npm run build` in the root runs `cd client && npm install && npm run build` but doesn't serve the built assets. **Fix needed:** either a static-file server in Express or a proper deployment target (Vercel, Netlify, etc.).
-- **[ ] No environment configuration** — LM Studio URL, port, and API keys are hardcoded. **Fix needed:** `.env` file support via `dotenv`.
 - **[ ] No error boundaries** — React errors crash the whole app. Add `ErrorBoundary` component.
+- **[ ] No video thumbnail / metadata display** — only title is shown. Add thumbnail, duration, view count.
+- **[ ] No copy-all for raw transcript** — only reconstructed text has a copy button.
+- **[ ] No loading state for reconstruction** — only spinner, no intermediate feedback.
+- **[ ] No keyboard shortcuts** — e.g. Enter to submit URL (partial: Enter works via form), Escape to reset.
+- **[ ] No `.gitignore`** — add standard Node.js `.gitignore`.
 
-### Medium priority
+### Low priority / nice-to-have (unchanged)
 
-- **[ ] SRT export uses start+duration instead of start→end** — the `formatSRTTime` call for end time uses `start + duration`, but if segments overlap this can produce incorrect timestamps.
-- **[ ] No video thumbnail / metadata display** — only the title is shown. Add thumbnail, duration, view count.
-- **[ ] No copy-all for raw transcript** — only the reconstructed text has a copy button.
-- **[ ] CSS has duplicate rules** — `.reset-button`, `.export-bar`, `.empty-state`, `.video-info` are defined twice in `main.css`.
-- **[ ] No loading state for reconstruction** — the button shows a spinner but no intermediate feedback (e.g., "Analyzing fragments…").
-- **[ ] No keyboard shortcuts** — e.g., Enter to submit URL, Escape to reset.
-
-### Low priority / nice-to-have
-
-- **[ ] Dark/light theme toggle** — currently dark-only.
-- **[ ] Multi-language support** — UI is English-only; transcript segments don't show detected language.
-- **[ ] Shareable links** — generate a URL that pre-fills the YouTube link and auto-fetches.
-- **[ ] History / recent searches** — localStorage-based history of fetched videos.
-- **[ ] Mobile responsive improvements** — works on mobile but layout is desktop-first.
+- **[ ] Dark/light theme toggle**
+- **[ ] Multi-language support**
+- **[ ] Shareable links**
+- **[ ] History / recent searches**
+- **[ ] Mobile responsive improvements**
 
 ## Troubleshooting
 

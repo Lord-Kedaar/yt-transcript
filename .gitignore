@@ -1,0 +1,16 @@
+# Node
+node_modules/
+dist/
+*.log
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# macOS
+.DS_Store
+
+# Vite
+client/dist/
+client/.vite/
