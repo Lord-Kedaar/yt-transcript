@@ -497,6 +497,30 @@ body {
   height: 14px;
 }
 
+.save-button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.save-button:hover {
+  background: #2a9d4e;
+  border-color: #2a9d4e;
+}
+
+.save-button svg {
+  width: 14px;
+  height: 14px;
+}
+
 .reconstructed-content {
   padding: 1.25rem;
   max-height: 600px;

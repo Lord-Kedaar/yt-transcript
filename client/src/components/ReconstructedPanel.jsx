@@ -3,6 +3,18 @@ import { useState } from 'react';
 export default function ReconstructedPanel({ text }) {
   const [copied, setCopied] = useState(false);
 
+  function handleSave() {
+    const blob = new Blob([text], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'reconstructed.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   function handleCopy() {
     const copyFallback = () => {
       const ta = document.createElement('textarea');
@@ -59,6 +71,14 @@ export default function ReconstructedPanel({ text }) {
               Copy
             </>
           )}
+        </button>
+        <button className="save-button" onClick={handleSave}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+          Save
         </button>
       </div>
 
