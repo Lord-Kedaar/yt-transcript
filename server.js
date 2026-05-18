@@ -157,10 +157,10 @@ OUTPUT RULES:
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        max_tokens: 12000,
+        max_tokens: 32768,
         temperature: 0.1,
       }),
-      signal: AbortSignal.timeout(600000),
+      signal: AbortSignal.timeout(1800000),
     });
 
     if (!response.ok) {
