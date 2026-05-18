@@ -1,10 +1,15 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { fetchTranscript } from 'youtube-transcript';
+import { fetchTranscript } from 'youtube-transcript-plus';
 
 const app = express();
+
+// A. Config from env (with defaults)
 const PORT = process.env.PORT || 4000;
-const LM_STUDIO_URL = 'http://localhost:1234';
+const LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://localhost:1234';
+const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL || 'qwen3.6-35b-a3b-mlx-nvfp4';
+const CACHE_TTL_MS = (parseInt(process.env.CACHE_TTL_MINUTES) || 60) * 60 * 1000;
 
 app.use(cors({ origin: '*' }));
 app.use(express.json());
@@ -37,8 +42,26 @@ async function fetchVideoTitle(videoId) {
   return `Video ${videoId}`;
 }
 
-app.get('/api/health', (_req, res) => {
-  res.json({ status: 'ok', message: 'yt-transcript API running' });
+// B. Cache implementation
+const cache = new Map();
+function getCached(key) { const entry = cache.get(key); if (entry && Date.now() < entry.expires) return entry.value; cache.delete(key); return null; }
+function setCache(key, value, ttlMs = CACHE_TTL_MS) { cache.set(key, { value, expires: Date.now() + ttlMs }); }
+function clearCache() { cache.clear(); }
+
+// C. LM Studio health check function
+async function checkLMStudio() {
+  try {
+    const res = await fetch(`${LM_STUDIO_URL}/v1/models`, { method: 'GET', signal: AbortSignal.timeout(3000) });
+    if (!res.ok) return { ok: false, status: res.status, error: `HTTP ${res.status}` };
+    const data = await res.json().catch(() => null);
+    const hasModel = data?.data?.some(m => m.id === LM_STUDIO_MODEL);
+    return { ok: true, models: data?.data?.map(m => m.id) || [], requested: LM_STUDIO_MODEL, loaded: hasModel };
+  } catch (err) { return { ok: false, error: err.message }; }
+}
+
+app.get('/api/health', async (req, res) => {
+  const lmStatus = await checkLMStudio();
+  res.json({ status: 'ok', lmStudio: lmStatus.ok ? 'connected' : 'unreachable', model: LM_STUDIO_MODEL });
 });
 
 app.get('/api/transcript', async (req, res) => {
@@ -52,21 +75,23 @@ app.get('/api/transcript', async (req, res) => {
   }
 
   try {
-    const transcript = await fetchTranscript(videoId);
+    const cacheKey = `transcript:${videoId}`;
+    let cached = getCached(cacheKey);
+    if (cached) return res.json(cached);
 
-    const snippets = Object.values(transcript).map(item => ({
+    const result = await fetchTranscript(videoId, { videoDetails: true });
+
+    const snippets = result.segments.map(item => ({
       text: item.text,
-      start: Math.round((item.offset || 0) / 100),
-      duration: Math.round((item.duration || 0) / 100),
+      start: Math.round(item.start),
+      duration: Math.round(item.duration || 0),
     }));
 
-    if (snippets.length === 0) {
-      return res.status(404).json({ error: 'No transcript found for this video. It may not have captions enabled.' });
-    }
+    const title = result.videoDetails?.title || await fetchVideoTitle(videoId);
 
-    const title = await fetchVideoTitle(videoId);
-
-    res.json({ videoId, title, transcriptText: snippets.map(s => s.text).join(' '), snippets });
+    const response = { videoId, title, transcriptText: snippets.map(s => s.text).join(' '), snippets };
+    setCache(cacheKey, response);
+    res.json(response);
   } catch (err) {
     const msg = err.message?.toLowerCase() || '';
 
@@ -88,6 +113,12 @@ app.post('/api/reconstruct', async (req, res) => {
     return res.status(400).json({ error: 'No snippets provided for reconstruction.' });
   }
 
+  // Check LM Studio health first
+  const lmStatus = await checkLMStudio();
+  if (!lmStatus.ok) {
+    return res.status(503).json({ error: 'LM Studio is unreachable. Please ensure it is running on localhost:1234 with a model loaded.' });
+  }
+
   // Build raw text from all snippet texts (preserves order)
   const rawText = snippets.map(s => s.text).join(' ');
 
@@ -104,8 +135,7 @@ CRITICAL RULES:
 - Group related fragments into coherent paragraphs
 - The output should be the same spoken content, just properly structured
 
-Input: fragmented transcript segments
-Output: reconstructed text in proper paragraphs`;
+Output ONLY a JSON object with a single field "output": "..." containing the reconstructed text.`;
 
   const userPrompt = `Reconstruct the following transcript fragments into readable, properly structured text. Keep every word exactly as-is.\n\n${rawText}`;
 
@@ -114,7 +144,7 @@ Output: reconstructed text in proper paragraphs`;
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'qwen3.6-35b-a3b-mlx-nvfp4',
+        model: LM_STUDIO_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -122,6 +152,7 @@ Output: reconstructed text in proper paragraphs`;
         max_tokens: 8192,
         temperature: 0.1,
       }),
+      signal: AbortSignal.timeout(120000),
     });
 
     if (!response.ok) {
@@ -137,27 +168,28 @@ Output: reconstructed text in proper paragraphs`;
     }
 
     const msg = choice.message || {};
-    
-    // qwen3.6-35b-a3b-mlx-nvfp4 outputs to reasoning_content, not content
-    // Extract the meaningful text from reasoning_content
-    let rawOutput = msg.content || '';
-    
-    if (!rawOutput.trim()) {
-      const reasoning = msg.reasoning_content || '';
-      // Clean up the reasoning content: remove thinking process markers
-      // The model outputs structured thinking like "Here's a thinking process:" and numbered steps
-      // We want to extract the actual output text
-      rawOutput = cleanReasoningOutput(reasoning);
-    }
 
-    if (!rawOutput.trim()) {
+    // Try msg.content first; only if empty, try msg.reasoning_content
+    const rawContent = msg.content || msg.reasoning_content || '';
+
+    let reconstructed = rawContent.trim();
+    try {
+      const parsed = JSON.parse(reconstructed);
+      reconstructed = parsed.output || reconstructed;
+    } catch { /* not JSON, use rawContent */ }
+
+    if (!reconstructed.trim()) {
       return res.status(500).json({ error: 'LM Studio returned an empty response.' });
     }
 
+    // Cache the reconstruction result by a hash of snippet texts
+    const cacheKey = `reconstruct:${btoa(snippets.map(s => s.text).join(' '))}`;
+    setCache(cacheKey, { reconstructed, snippetCount: snippets.length, model: LM_STUDIO_MODEL });
+
     res.json({
-      reconstructed: rawOutput,
+      reconstructed,
       snippetCount: snippets.length,
-      model: 'qwen3.6-35b-a3b-mlx-nvfp4',
+      model: LM_STUDIO_MODEL,
     });
 
   } catch (err) {
@@ -168,42 +200,18 @@ Output: reconstructed text in proper paragraphs`;
   }
 });
 
-// Extract meaningful output from qwen's reasoning_content
-function cleanReasoningOutput(text) {
-  if (!text || !text.trim()) return '';
+// F. LM Studio health endpoint
+app.get('/api/lm-status', async (req, res) => {
+  const status = await checkLMStudio();
+  res.json(status);
+});
 
-  // Remove common thinking process markers
-  let cleaned = text;
-  
-  // Remove "Here's a thinking process:" / "Thinking Process:" headers
-  cleaned = cleaned.replace(/^(here['']s\s+)?(a\s+)?thinking\s+(process|thought)[:\s]+/i, '');
-  
-  // Remove numbered step headers like "1. **Analyze User Input:**"
-  cleaned = cleaned.replace(/(\d+\.\s+)\*\*(.+?)\*\*[:\s]*/g, '$2: ');
-  
-  // Remove bullet points and list markers at start of lines
-  cleaned = cleaned.replace(/^[•\-\*]\s*/gm, '');
-  
-  // Remove trailing thinking fragments (partial sentences at the end)
-  // The actual output tends to be in the middle; trailing fragments are incomplete thoughts
-  const lines = cleaned.split('\n');
-  
-  // Find the last complete paragraph (not a fragment)
-  let resultLines = [];
-  for (let i = 0; i < lines.length - 1; i++) {
-    const line = lines[i].trim();
-    if (line.length > 10) {
-      resultLines.push(line);
-    }
-  }
-
-  if (resultLines.length > 0) {
-    return resultLines.join('\n').trim();
-  }
-
-  // Fallback: just clean up the whole text
-  return cleaned.replace(/\n{3,}/g, '\n\n').trim();
-}
+// H. Static file serving for production
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(path.join(__dirname, 'client/dist')));
+app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'client/dist/index.html')));
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  yt-transcript API running`);
@@ -215,4 +223,3 @@ const server = app.listen(PORT, '0.0.0.0', () => {
 
 process.on('SIGTERM', () => { server.close(); process.exit(0); });
 process.on('SIGINT',  () => { server.close(); process.exit(0); });
-
