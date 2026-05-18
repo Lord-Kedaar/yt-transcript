@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import './styles/main.css';
 import Header from './components/Header';
 import UrlInput from './components/UrlInput';
@@ -16,6 +16,8 @@ export default function App() {
   const [error, setError] = useState('');
   const [transcriptData, setTranscriptData] = useState(null);
   const [reconstructedText, setReconstructedText] = useState('');
+  const [reconstructProgress, setReconstructProgress] = useState('');
+  const timerRef = useRef(null);
 
   async function handleFetch() {
     if (!url.trim()) return;
@@ -24,6 +26,7 @@ export default function App() {
     setError('');
     setTranscriptData(null);
     setReconstructedText('');
+    setReconstructProgress('');
 
     try {
       const res = await fetch(`${API_URL}?url=${encodeURIComponent(url.trim())}`);
@@ -45,6 +48,15 @@ export default function App() {
     if (!transcriptData) return;
 
     setReconstructing(true);
+    setError('');                 // clear previous errors
+
+    // Progress timer — users need to know LM inference takes ~2-3 min
+    let sec = 0;
+    setReconstructProgress('AI reconstructing...');
+    timerRef.current = setInterval(() => {
+      sec += 1;
+      setReconstructProgress(`AI reconstructing... (${sec}s)`);
+    }, 1000);
 
     try {
       const res = await fetch(RECONSTRUCT_URL, {
@@ -64,6 +76,8 @@ export default function App() {
       setError(err.message || 'Reconstruction failed');
     } finally {
       setReconstructing(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      setReconstructProgress('');
     }
   }
 
@@ -72,6 +86,7 @@ export default function App() {
     setError('');
     setTranscriptData(null);
     setReconstructedText('');
+    setReconstructProgress('');
   }
 
   return (
@@ -109,6 +124,10 @@ export default function App() {
                 </>
               )}
             </button>
+
+            {reconstructProgress && (
+              <div className="reconstruct-progress">{reconstructProgress}</div>
+            )}
 
             {reconstructedText && (
               <ReconstructedPanel text={reconstructedText} />

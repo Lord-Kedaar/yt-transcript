@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here.
 
+## [2026-05-18] — Emergency stability fixes
+
+### Fixed
+
+- **Reconstruct timeout for long videos** — `youtube-transcript-plus` returns ~700 snippets for 20-minute videos; sending all 700 to `qwen3.6-35b-a3b-mlx-nvfp4` in one prompt causes 30+ minute inference and `AbortSignal.timeout(120s)` error (`curl rc=28`).
+  - Backend now caps snippets at **300** before sending to LM Studio (still covers ~10–15 min of speech).
+  - Backend timeout bumped from **120s → 600s** (10 min) to accommodate slow local inference.
+  - Result: URL `https://youtu.be/hGnn05ccwNc` (Hermes Agent) now reconstructs in ~156s instead of crashing.
+- **Frontend error UX during reconstruct** — added live countdown timer (`AI reconstructing... (42s)`) so users know the process is running, not hung. Previous "Could not connect to LM Studio" error was stale from prior timeout, not actual LM failure.
+- **Clear stale errors** — clicking "Reconstruct with AI" now clears old error banner before starting new request.
+
+---
+
 ## [Updated] — Backend infrastructure rewrite + frontend fixes
 
 ### Changed

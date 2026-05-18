@@ -139,6 +139,15 @@ Output ONLY a JSON object with a single field "output": "..." containing the rec
 
   const userPrompt = `Reconstruct the following transcript fragments into readable, properly structured text. Keep every word exactly as-is.\n\n${rawText}`;
 
+  // Limit snippets to avoid LM timeout for very long videos
+  const MAX_SNIPPETS = 300;
+  if (snippets.length > MAX_SNIPPETS) {
+    console.warn(`Reconstruct: capping ${snippets.length} snippets to ${MAX_SNIPPETS}`);
+  }
+  const limitedSnippets = snippets.slice(0, MAX_SNIPPETS);
+  const limitedRawText = limitedSnippets.map(s => s.text).join(' ');
+  const limitedPrompt = `Reconstruct the following transcript fragments into readable, properly structured text. Keep every word exactly as-is.\n\n${limitedRawText}`;
+
   try {
     const response = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
       method: 'POST',
@@ -147,12 +156,12 @@ Output ONLY a JSON object with a single field "output": "..." containing the rec
         model: LM_STUDIO_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
+          { role: 'user', content: limitedPrompt },
         ],
         max_tokens: 8192,
         temperature: 0.1,
       }),
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(600000),
     });
 
     if (!response.ok) {

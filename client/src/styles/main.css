@@ -432,6 +432,15 @@ body {
   animation: spin 0.8s linear infinite;
 }
 
+.reconstruct-progress {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin-top: -0.75rem;
+  margin-bottom: 0.75rem;
+  font-style: italic;
+}
+
 /* ===== Reconstructed Panel ===== */
 .reconstructed-panel {
   margin-bottom: 1.25rem;
