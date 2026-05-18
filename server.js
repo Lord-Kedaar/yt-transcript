@@ -128,17 +128,19 @@ app.post('/api/reconstruct', async (req, res) => {
 
 INSTRUCTIONS:
 Merge the fragmented transcript snippets back into complete paragraphs.
-- Group related sentences into coherent paragraphs
-- Fix line breaks so sentences flow naturally
+- Group related sentences into paragraphs by SUB-TOPIC (not just by flow)
+- Each paragraph must cover ONE theme/concept (2 to 6 sentences max)
+- Put a BLANK LINE between every paragraph
 - Preserve EVERY word exactly as-is — do NOT summarize, edit, or omit anything
+- Fix line breaks so sentences flow naturally within each paragraph
 
 OUTPUT RULES:
 - Return ONLY the reconstructed text — plain paragraphs, no JSON, no code blocks
+- Each paragraph separated by a single blank line (two consecutive newlines)
 - Do NOT add thinking steps, numbered lists, or self-correction notes
 - Do NOT include any meta-commentary like "Paragraph 1" or "Self-correction"
-- NO markdown \\\`\\\`\\\` blocks — output plain text only`;
+- NO markdown \`\`\` blocks — output plain text only`;
 
-  // Limit snippets to avoid LM timeout for very long videos
   const MAX_SNIPPETS = 300;
   if (snippets.length > MAX_SNIPPETS) {
     console.warn(`Reconstruct: capping ${snippets.length} snippets to ${MAX_SNIPPETS}`);
@@ -146,7 +148,7 @@ OUTPUT RULES:
   const limitedSnippets = snippets.slice(0, MAX_SNIPPETS);
   const limitedRawText = limitedSnippets.map(s => s.text).join(' ');
 
-  const userPrompt = `Reconstruct this transcript into readable paragraphs. Keep every word exactly as-is.\n\n${limitedRawText}`;
+  const userPrompt = `Reconstruct this transcript into readable paragraphs. Keep every word exactly as-is.\n\n${limitedRawText}\n\nFormat: one blank line between each paragraph.`;
 
   try {
     const response = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
