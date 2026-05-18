@@ -123,21 +123,19 @@ app.post('/api/reconstruct', async (req, res) => {
   const rawText = snippets.map(s => s.text).join(' ');
 
   // The prompt: merge fragments into readable paragraphs, preserve ALL words
-  const systemPrompt = `You are a text reconstruction assistant. You receive fragmented, broken-up sentences from an auto-generated video transcript where each sentence is split into multiple short segments.
+  const systemPrompt = `You are a text reconstruction assistant.
 
-Your ONLY job is to merge these fragments back into complete, readable paragraphs and sentences.
+INSTRUCTIONS:
+Merge the fragmented transcript snippets back into complete paragraphs.
+- Group related sentences into coherent paragraphs
+- Fix line breaks so sentences flow naturally
+- Preserve EVERY word exactly as-is — do NOT summarize, edit, or omit anything
 
-CRITICAL RULES:
-- Preserve EVERY word exactly as it appears in the original fragments
-- Do NOT summarize, edit, rewrite, or omit anything
-- Do NOT add any new words or information
-- Fix the sentence structure and line breaks so it reads naturally as proper text
-- Group related fragments into coherent paragraphs
-- The output should be the same spoken content, just properly structured
-
-Output ONLY a JSON object with a single field "output": "..." containing the reconstructed text.`;
-
-  const userPrompt = `Reconstruct the following transcript fragments into readable, properly structured text. Keep every word exactly as-is.\n\n${rawText}`;
+OUTPUT RULES:
+- Return ONLY the reconstructed text — plain paragraphs, no JSON, no code blocks
+- Do NOT add thinking steps, numbered lists, or self-correction notes
+- Do NOT include any meta-commentary like "Paragraph 1" or "Self-correction"
+- NO markdown \\\`\\\`\\\` blocks — output plain text only`;
 
   // Limit snippets to avoid LM timeout for very long videos
   const MAX_SNIPPETS = 300;
@@ -146,7 +144,8 @@ Output ONLY a JSON object with a single field "output": "..." containing the rec
   }
   const limitedSnippets = snippets.slice(0, MAX_SNIPPETS);
   const limitedRawText = limitedSnippets.map(s => s.text).join(' ');
-  const limitedPrompt = `Reconstruct the following transcript fragments into readable, properly structured text. Keep every word exactly as-is.\n\n${limitedRawText}`;
+
+  const userPrompt = `Reconstruct this transcript into readable paragraphs. Keep every word exactly as-is.\n\n${limitedRawText}`;
 
   try {
     const response = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
@@ -156,9 +155,9 @@ Output ONLY a JSON object with a single field "output": "..." containing the rec
         model: LM_STUDIO_MODEL,
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: limitedPrompt },
+          { role: 'user', content: userPrompt },
         ],
-        max_tokens: 8192,
+        max_tokens: 12000,
         temperature: 0.1,
       }),
       signal: AbortSignal.timeout(600000),
@@ -177,26 +176,32 @@ Output ONLY a JSON object with a single field "output": "..." containing the rec
     }
 
     const msg = choice.message || {};
-
-    // Prefer msg.content; if empty, it's probably a parsing error on the model side
     let rawContent = msg.content || '';
     const reasoning = msg.reasoning_content || '';
 
-    // If content is empty but reasoning is non-empty, try extracting JSON from reasoning
+    // Model sometimes puts everything in reasoning_content
     if (!rawContent.trim() && reasoning.trim()) {
       rawContent = reasoning;
     }
 
     let reconstructed = rawContent.trim();
-    // Strip possible Markdown JSON code block markers
-    const cleaned = reconstructed.replace(/^```(?:json)?\s*/, '').replace(/\s*```$/, '').trim();
-    try {
-      const parsed = JSON.parse(cleaned);
-      reconstructed = parsed.output || cleaned;
-    } catch {
-      // Not valid JSON - use cleaned text without code block
-      reconstructed = cleaned;
-    }
+
+    // Strip reasoning model's meta-commentary before sending to user
+    reconstructed = reconstructed
+      .replace(/^Here's? a thinking process:?\s*/im, '')
+      .replace(/^(?:\d+\.)?\s*\*\*Analyze User Input:\*\*\s*/im, '')
+      .replace(/^(?:\d+\.)?\s*\*\*Identify Key Challenges:\*\*\s*/im, '')
+      .replace(/^(?:\d+\.)?\s*\*\*Process & Reconstruct.*?\*\*\s*/im, '')
+      .replace(/^(?:\d+\.)?\s*\*\*Self-Correction\/Refinement.*?\*\*\s*/im, '')
+      .replace(/\*Paragraph \d+:\*\s*/gi, '')
+      .replace(/\*Self-Correction\/Refinement.*?\*\s*/gi, '')
+      .replace(/\*Check against constraints:\*\s*/gi, '')
+      .replace(/\*Text to output:\*\s*/gi, '')
+      .replace(/Let's draft it out carefully\.\s*/gi, '')
+      .replace(/I wіll carefully (?:check|paste|construct|output)\..*?\s*/gi, '')
+      .replace(/Actually,? I'?ll just output.*?\s*/gi, '')
+      .replace(/I'?ll format it carefully\.\s*/gi, '')
+      .trim();
 
     if (!reconstructed.trim()) {
       return res.status(500).json({ error: 'LM Studio returned an empty response.' });

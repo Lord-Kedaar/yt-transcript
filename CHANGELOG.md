@@ -18,6 +18,19 @@ All notable changes to this project are documented here.
 
 ---
 
+## [2026-05-18] — Copy button fix + reasoning cleanup
+
+### Fixed
+
+- **Copy button in Reconstructed Panel** — `navigator.clipboard.writeText()` fails on HTTP/Tailscale due to browser security requiring secure context (`navigator.clipboard` is `undefined` on insecure origins). Added `document.execCommand('copy')` fallback via invisible `<textarea>` element. Button now works across HTTP, Tailscale, and localhost.
+- **Reconstruct output polluted with reasoning metadata** — model `qwen3.6-35b-mlx` in reasoning mode consumed entire `max_tokens: 8192` on internal monologue (8191/8192 = reasoning tokens), leaving ~1 token for output. Result was truncated raw reasoning text full of "*Paragraph N:*", "*Self-Correction:*", "Let's draft it carefully." instead of reconstructed transcript.
+  - **Prompt simplification**: removed JSON wrapper from system prompt — model now outputs plain paragraphs directly (smaller reasoning footprint).
+  - **Token increase**: `max_tokens: 8192 → 12000`.
+  - **Post-processing**: aggressive regex stripping of reasoning meta-commentary ("Here's a thinking process:", "**Analyze User Input:**", "Paragraph N:", "Self-Correction", etc.).
+  - **Result**: Hermes Agent video now reconstructs to 11,913 clean characters in ~211s, zero reasoning artifacts.
+
+---
+
 ## [Updated] — Backend infrastructure rewrite + frontend fixes
 
 ### Changed
