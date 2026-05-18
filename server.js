@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { fetchTranscript } from 'youtube-transcript-plus';
+import he from 'he';
 
 const app = express();
 
@@ -82,12 +83,12 @@ app.get('/api/transcript', async (req, res) => {
     const result = await fetchTranscript(videoId, { videoDetails: true });
 
     const snippets = result.segments.map(item => ({
-      text: item.text,
+      text: he.decode(item.text),
       start: Math.round(item.offset),
       duration: Math.round(item.duration || 0),
     }));
 
-    const title = result.videoDetails?.title || await fetchVideoTitle(videoId);
+    const title = result.videoDetails?.title ? he.decode(result.videoDetails.title) : await fetchVideoTitle(videoId);
 
     const response = { videoId, title, transcriptText: snippets.map(s => s.text).join(' '), snippets };
     setCache(cacheKey, response);

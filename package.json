@@ -14,9 +14,11 @@
     "cors": "^2.8.5",
     "dotenv": "^16.0.0",
     "express": "^4.19.0",
+    "he": "^1.2.0",
     "youtube-transcript-plus": "^2.0.0"
   },
   "devDependencies": {
+    "@types/he": "^1.2.3",
     "concurrently": "^8.2.0"
   }
 }
