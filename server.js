@@ -83,7 +83,7 @@ app.get('/api/transcript', async (req, res) => {
 
     const snippets = result.segments.map(item => ({
       text: item.text,
-      start: Math.round(item.start),
+      start: Math.round(item.offset),
       duration: Math.round(item.duration || 0),
     }));
 
