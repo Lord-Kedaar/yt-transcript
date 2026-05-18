@@ -1,0 +1,21 @@
+{
+  "name": "yt-transcript",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:server": "node server.js",
+    "dev:client": "cd client && vite",
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "build": "cd client && npm install && npm run build",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.0",
+    "youtube-transcript": "^1.2.1"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}
