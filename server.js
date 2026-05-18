@@ -9,7 +9,7 @@ const app = express();
 // A. Config from env (with defaults)
 const PORT = process.env.PORT || 4000;
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://localhost:1234';
-const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL || 'qwen3.6-35b-a3b-mlx-nvfp4';
+const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL || 'bielik-11b-v3.0-mlx';
 const CACHE_TTL_MS = (parseInt(process.env.CACHE_TTL_MINUTES) || 60) * 60 * 1000;
 
 app.use(cors({ origin: '*' }));
