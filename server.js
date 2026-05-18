@@ -228,6 +228,80 @@ OUTPUT RULES:
   }
 });
 
+// ===== SUMMARIZE ENDPOINT =====
+app.post('/api/summarize', async (req, res) => {
+  const { snippets } = req.body;
+
+  if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {
+    return res.status(400).json({ error: 'No snippets provided for summarization.' });
+  }
+
+  const lmStatus = await checkLMStudio();
+  if (!lmStatus.ok) {
+    return res.status(503).json({ error: 'LM Studio is unreachable.' });
+  }
+
+  const rawText = snippets.map(s => s.text).join(' ');
+
+  const systemPrompt = `You are a summarization assistant.
+
+INSTRUCTIONS:
+- Summarize the transcript concisely in 3 to 6 bullet points.
+- Each bullet point must be a complete sentence.
+- Capture the key themes, main topics, and important takeaways only.
+- Do NOT include filler, introductions, or meta-commentary.
+
+OUTPUT RULES:
+- Return ONLY bullet points — no JSON, no code blocks, no numbered lists.
+- Start each bullet with "- " (dash + space).
+- NO markdown \`\`\` blocks — output plain text only.`;
+
+  const userPrompt = `Summarize this transcript.\n\n${rawText}`;
+
+  try {
+    const response = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: LM_STUDIO_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 8192,
+        temperature: 0.1,
+      }),
+      signal: AbortSignal.timeout(900000),
+    });
+
+    if (!response.ok) {
+      const errData = await response.text();
+      console.error('LM Studio error:', errData);
+      return res.status(502).json({ error: 'LM Studio returned an error. Is the model loaded?' });
+    }
+
+    const data = await response.json();
+    const choice = data.choices?.[0];
+    if (!choice) {
+      return res.status(500).json({ error: 'LM Studio returned no choices.' });
+    }
+
+    const msg = choice.message || {};
+    const rawContent = msg.content || msg.reasoning_content || '';
+    let summary = rawContent.trim();
+
+    if (!summary) {
+      return res.status(500).json({ error: 'LM Studio returned an empty response.' });
+    }
+
+    res.json({ summary, snippetCount: snippets.length, model: LM_STUDIO_MODEL });
+
+  } catch (err) {
+    console.error('Summarize error:', err);
+    res.status(502).json({ error: err.message || 'Summarization failed' });
+  }
+});
+
 // F. LM Studio health endpoint
 app.get('/api/lm-status', async (req, res) => {
   const status = await checkLMStudio();

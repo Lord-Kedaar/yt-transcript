@@ -4,10 +4,12 @@ import Header from './components/Header';
 import UrlInput from './components/UrlInput';
 import TranscriptPanel from './components/TranscriptPanel';
 import ReconstructedPanel from './components/ReconstructedPanel';
+import SummaryPanel from './components/SummaryPanel';
 import ExportButtons from './components/ExportButtons';
 
 const API_URL = '/api/transcript';
 const RECONSTRUCT_URL = '/api/reconstruct';
+const SUMMARIZE_URL = '/api/summarize';
 
 export default function App() {
   const [url, setUrl] = useState('');
@@ -17,6 +19,9 @@ export default function App() {
   const [transcriptData, setTranscriptData] = useState(null);
   const [reconstructedText, setReconstructedText] = useState('');
   const [reconstructProgress, setReconstructProgress] = useState('');
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryText, setSummaryText] = useState('');
+  const [summaryProgress, setSummaryProgress] = useState('');
   const timerRef = useRef(null);
 
   async function handleFetch() {
@@ -81,12 +86,50 @@ export default function App() {
     }
   }
 
+  async function handleSummarize() {
+    if (!transcriptData) return;
+
+    setSummarizing(true);
+    setError('');
+
+    let sec = 0;
+    setSummaryProgress('AI summarizing...');
+    timerRef.current = setInterval(() => {
+      sec += 1;
+      setSummaryProgress(`AI summarizing... (${sec}s)`);
+    }, 1000);
+
+    try {
+      const res = await fetch(SUMMARIZE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ snippets: transcriptData.snippets }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Summarization failed');
+      }
+
+      setSummaryText(data.summary);
+    } catch (err) {
+      setError(err.message || 'Summarization failed');
+    } finally {
+      setSummarizing(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      setSummaryProgress('');
+    }
+  }
+
   function handleReset() {
     setUrl('');
     setError('');
     setTranscriptData(null);
     setReconstructedText('');
+    setSummaryText('');
     setReconstructProgress('');
+    setSummaryProgress('');
   }
 
   return (
@@ -109,28 +152,55 @@ export default function App() {
               <h2>{transcriptData.title}</h2>
             </div>
 
-            <button className="reconstruct-button" onClick={handleReconstruct} disabled={reconstructing}>
-              {reconstructing ? (
-                <>
-                  <span className="spinner-sm"></span>
-                  Reconstructing...
-                </>
-              ) : (
-                <>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 2v4m0 12v4m-7.05-13.95l2.83 2.83m8.84 8.84l2.83 2.83M2 12h4m12 0h4M4.22 4.22l2.83 2.83m8.84 8.84l2.83 2.83"/>
-                  </svg>
-                  Reconstruct with AI
-                </>
-              )}
-            </button>
+            <div className="action-buttons">
+              <button className="reconstruct-button" onClick={handleReconstruct} disabled={reconstructing || summarizing}>
+                {reconstructing ? (
+                  <>
+                    <span className="spinner-sm"></span>
+                    Reconstructing...
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 2v4m0 12v4m-7.05-13.95l2.83 2.83m8.84 8.84l2.83 2.83M2 12h4m12 0h4M4.22 4.22l2.83 2.83m8.84 8.84l2.83 2.83"/>
+                    </svg>
+                    Reconstruct with AI
+                  </>
+                )}
+              </button>
+              <button className="summarize-button" onClick={handleSummarize} disabled={reconstructing || summarizing}>
+                {summarizing ? (
+                  <>
+                    <span className="spinner-sm"></span>
+                    Summarizing...
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                      <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                    Summarize with AI
+                  </>
+                )}
+              </button>
+            </div>
 
             {reconstructProgress && (
               <div className="reconstruct-progress">{reconstructProgress}</div>
             )}
+            {summaryProgress && (
+              <div className="reconstruct-progress">{summaryProgress}</div>
+            )}
 
             {reconstructedText && (
               <ReconstructedPanel text={reconstructedText} />
+            )}
+            {summaryText && (
+              <SummaryPanel text={summaryText} />
             )}
 
             <ExportButtons snippets={transcriptData.snippets} />
