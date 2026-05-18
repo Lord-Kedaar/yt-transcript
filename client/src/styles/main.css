@@ -227,37 +227,6 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* ===== Video Info ===== */
-.video-info {
-  margin-bottom: 1.25rem;
-  padding: 1.25rem;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  animation: fadeIn 0.4s ease;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
-.video-info h2 {
-  font-size: 1.15rem;
-  font-weight: 600;
-  margin-bottom: 0.5rem;
-}
-
-.video-id {
-  display: inline-block;
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 0.2rem 0.6rem;
-  border-radius: var(--radius-sm);
-  font-family: 'SF Mono', 'Fira Code', monospace;
-}
-
 .auto-badge {
   display: inline-block;
   margin-left: 0.5rem;
@@ -266,48 +235,6 @@ body {
   background: rgba(245, 158, 11, 0.1);
   padding: 0.2rem 0.6rem;
   border-radius: var(--radius-sm);
-}
-
-/* ===== Export Bar ===== */
-.export-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1.25rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  animation: fadeIn 0.4s ease 0.1s both;
-}
-
-.export-label {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-
-.export-button {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.5rem 1rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.export-button:hover {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
-}
-
-.export-button svg {
-  width: 16px;
-  height: 16px;
 }
 
 /* ===== Transcript Panel ===== */
@@ -404,18 +331,6 @@ body {
   color: var(--accent-hover);
 }
 
-/* ===== Empty State ===== */
-.empty-state {
-  text-align: center;
-  padding: 4rem 2rem;
-  color: var(--text-muted);
-  animation: fadeIn 0.6s ease;
-}
-
-.empty-state p {
-  font-size: 1rem;
-}
-
 /* ===== Footer ===== */
 .app-footer {
   text-align: center;
@@ -468,35 +383,6 @@ body {
 @keyframes segmentFadeIn {
   from { opacity: 0.7; }
   to { opacity: 1; }
-}
-
-/* ===== Reset Button ===== */
-.reset-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  width: 100%;
-  margin-top: 1.25rem;
-  padding: 0.75rem 1.5rem;
-  background: transparent;
-  border: 1px dashed var(--border-color);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
-}
-
-.reset-button:hover {
-  background: rgba(99, 102, 241, 0.05);
-  border-color: var(--accent-primary);
-  color: var(--accent-hover);
-}
-
-.reset-button svg {
-  width: 18px;
-  height: 18px;
 }
 
 /* ===== Reconstruct Button ===== */
@@ -675,7 +561,7 @@ body {
   height: 18px;
 }
 
-/* ===== Export Buttons (updated) ===== */
+/* ===== Export Buttons ===== */
 .export-bar {
   display: flex;
   align-items: center;
@@ -716,7 +602,7 @@ body {
   height: 16px;
 }
 
-/* ===== Empty State (updated) ===== */
+/* ===== Empty State ===== */
 .empty-state {
   text-align: center;
   padding: 5rem 2rem;
@@ -727,7 +613,7 @@ body {
   font-size: 1rem;
 }
 
-/* ===== Video Info (updated) ===== */
+/* ===== Video Info ===== */
 .video-info {
   margin-bottom: 1.25rem;
   padding: 1.25rem;
@@ -741,9 +627,7 @@ body {
   font-weight: 600;
 }
 
-/* ===== Transcript Panel (updated) ===== */
+/* ===== Transcript Panel ===== */
 .transcript-container {
   margin-bottom: 1.25rem;
 }
-
-.css-remaining-content

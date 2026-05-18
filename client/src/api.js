@@ -18,7 +18,10 @@ export function exportToSRT(snippets) {
   let srt = '';
   for (let i = 0; i < snippets.length; i++) {
     const start = formatSRTTime(snippets[i].start);
-    const end = formatSRTTime(snippets[i].start + snippets[i].duration);
+    const endTime = (i + 1 < snippets.length)
+      ? snippets[i + 1].start
+      : snippets[i].start + snippets[i].duration;
+    const end = formatSRTTime(endTime);
     srt += `${i + 1}\n${start} --> ${end}\n${snippets[i].text}\n\n`;
   }
   downloadFile(srt.trim(), 'transcript.srt', 'text/plain');
