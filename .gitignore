@@ -14,3 +14,6 @@ dist/
 # Vite
 client/dist/
 client/.vite/
+
+# Backups
+*.backup-*

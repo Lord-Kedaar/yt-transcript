@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here.
 
+## [2026-05-19] — UI fixes: New Transcript position + AI button font size
+
+### Fixed
+
+- **"New Transcript" button moved from panels to top-level** — previously hidden inside `ReconstructedPanel` and `SummaryPanel`, making it unreachable when those panels were not yet rendered. Now placed above the video title as a subtle `.reset-bar` with `.reset-app-button`.
+- **Removed duplicate reset buttons from panels** — `ReconstructedPanel.jsx` and `SummaryPanel.jsx` no longer include `onReset` prop or the old `.reset-panel-button`. Clean state reset still handled by `App.jsx` `handleReset()` with `AbortController` cancellation.
+
+### Changed
+
+- **AI button font size reduced** — `.reconstruct-button` and `.summarize-button` changed from `font-size: 1rem` to `0.875rem` for visual consistency with surrounding UI.
+
+---
+
 ## [2026-05-18] — Language Choice Modal + AbortController + New Transcript
 
 ### Added
