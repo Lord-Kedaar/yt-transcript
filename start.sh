@@ -1,23 +1,18 @@
 #!/bin/bash
 
+# ytTranscript — foreground launcher (single port: 4000)
+
 # Kill any existing instances
-pkill -f "node server.js" 2>/dev/null
-lsof -ti:3000 2>/dev/null | xargs kill -9 2>/dev/null
+lsof -ti:4000 | xargs kill -9 2>/dev/null
+lsof -ti:3000 | xargs kill -9 2>/dev/null  # clean stale Vite
 
 cd /Users/radek/yt-transcript
 
-# Start backend
-node server.js &
-BACKEND_PID=$!
+# Ensure dist is built
+echo "Building frontend..."
+cd client && npm run build 2>&1 | tail -5
+cd ..
 
-sleep 1
-
-# Start frontend  
-cd client && npx vite --host 0.0.0.0 &
-FRONTEND_PID=$!
-
-echo "ytTranscript started:"
-echo "  Backend (API): http://localhost:4000"
-echo "  Frontend (UI): http://localhost:3000"
-
-wait
+# Start Express (serves SPA + API on :4000)
+echo "Starting ytTranscript..."
+node server.js

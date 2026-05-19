@@ -295,11 +295,9 @@ app.use(express.static(path.join(__dirname, 'client/dist')));
 app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'client/dist/index.html')));
 
 const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`\n  yt-transcript API running`);
-  console.log(`    Local:   http://localhost:${PORT}`);
-  console.log(`    Tailscale: http://100.127.3.65:${PORT}`);
-  console.log(`\n  Frontend: http://localhost:3000`);
-  console.log(`    Tailscale: http://100.127.3.65:3000\n`);
+  console.log(`\n  yt-transcript API + SPA running`);
+  console.log(`    Local:     http://localhost:${PORT}`);
+  console.log(`    Tailscale: http://100.127.3.65:${PORT}\n`);
 });
 
 process.on('SIGTERM', () => { server.close(); process.exit(0); });

@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here.
 
+## [2026-05-19] — Single-port deployment: Express serves SPA + API on :4000
+
+### Changed
+
+- **Eliminated dual-port development setup** — previously frontend ran on Vite dev server (`:3000`) proxying to Express backend (`:4000`). Now Express on `:4000` serves both the static SPA (`client/dist/`) and the API.
+- **Rewrote `manage.sh`** — simplified from dual-process (backend + frontend) to single-process launcher. No PID tracking for two services.
+- **Rewrote `start.sh`** — builds `client/dist/` via `npm run build`, then launches Express in foreground.
+- **Updated `server.js` console output** — removed hardcoded `:3000` references from startup log.
+- **Updated `README.md`** — single-port architecture diagram, unified "Development vs Production" section, removed all references to port `:3000`.
+
+### Removed
+
+- **Vite dev server (`:3000`)** no longer used. After any frontend change, run `cd client && npm run build`, then refresh the browser.
+- **Dual-process `manage.sh`** complexity eliminated.
+
+---
+
 ## [2026-05-19] — API refactor: unified /api/transform endpoint
 
 ### Changed

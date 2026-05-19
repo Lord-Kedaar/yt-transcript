@@ -14,19 +14,19 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 
 ```
 ┌─────────────────┐         ┌──────────────────┐         ┌───────────────┐
-│  Browser        │ HTTP    │  Express Server   │ TCP     │  LM Studio    │
-│  React + Vite   │◄───────►│  Port 4000       │────────►│  Port 1234    │
-│  :3000          │         │                  │         │  bielik-11b    │
+│  Browser        │ HTTP    │  Express Server  │ TCP     │  LM Studio    │
+│  React + Vite   │  ◄──►   │  Port 4000       │  ───►   │  Port 1234    │
+│  (SPA served    │         │  Serves client/  │         │  bielik-11b    │
+│   by Express)   │         │  dist/ + API     │         │                │
 └─────────────────┘         └──────────────────┘         └───────────────┘
                                 │
                                 ▼
-                         youtube-transcript
-                         (npm package)
+                         youtube-transcript-plus
 ```
 
 | Layer | Stack |
 |---|---|---|
-| Frontend | React 18 + Vite 5, dark theme CSS |
+| Frontend | React 18 + Vite 5 (build → static assets), dark theme CSS |
 | Backend | Node.js + Express 4, `youtube-transcript-plus` npm package |
 | LLM | LM Studio local server (`localhost:1234`), configurable model via `.env` (default: `bielik-11b-v3.0-mlx`) |
 | Cache | In-memory Map with TTL |
@@ -37,7 +37,7 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 ### Prerequisites
 
 - **Node.js** 18+ (nvm recommended)
-- **LM Studio** running locally with `qwen3.6-35b-a3b-mlx-nvfp4` loaded at `http://localhost:1234`
+- **LM Studio** running locally with a model loaded at `http://localhost:1234`
 
 ### Install & Run
 
@@ -48,13 +48,18 @@ cd /Users/radek/yt-transcript
 npm install          # root (Express server)
 cd client && npm install   # frontend (Vite + React)
 
-# Option A: foreground (development)
-cd .. && bash start.sh
+# Build frontend (required — Express serves dist/, not Vite dev server)
+cd .. && npm run build --prefix client
 
-# Option B: background via LaunchAgents
+# Option A: foreground (development)
+bash start.sh
+
+# Option B: background via nohup
 chmod +x manage.sh
 ./manage.sh start
 ```
+
+Access the app at **http://localhost:4000**.
 
 ### Endpoints
 
@@ -84,27 +89,27 @@ chmod +x manage.sh
 
 ### URLs
 
-| Service | Local | Tailscale |
-|---|---|---|
-| Frontend (Vite) | `http://localhost:3000` | `http://100.127.3.65:3000` |
-| Backend (Express) | `http://localhost:4000` | `http://100.127.3.65:4000` |
+| Service | Address |
+|---|---|
+| App (SPA + API) | `http://localhost:4000` |
+| Tailscale | `http://100.127.3.65:4000` |
 
 ## Project structure
 
 ```
 yt-transcript/
-├── server.js                    # Express backend: transcript fetch + LM Studio proxy
+├── server.js                    # Express backend: transcript fetch + LM Studio proxy + static SPA serving
 ├── manage.sh                    # nohup-based service manager (start/stop/restart/status)
-├── start.sh                     # Foreground dev launcher (kills old, starts both)
+├── start.sh                     # Foreground launcher (kills old, builds, starts Express)
 ├── package.json                 # Root: Express + youtube-transcript deps
 │
-└── client/                      # React frontend (Vite)
+└── client/                      # React frontend (Vite → build → dist/)
     ├── index.html
-    ├── vite.config.js           # Dev server :3000, proxy /api → :4000
+    ├── vite.config.js           # Development only; production uses static build
     ├── package.json
     └── src/
         ├── api.js               # fetchTranscript, exportToTXT/SRT helpers
-        ├── App.jsx              # Main app: URL input → transcript → reconstruct → summarize → export
+        ├── App.jsx              # Main app: URL input → transcript → AI transform → export
         └── components/
             ├── Header.jsx       # Logo + subtitle
             ├── UrlInput.jsx     # URL text field + fetch button
@@ -113,21 +118,33 @@ yt-transcript/
             └── ExportButtons.jsx    # TXT / SRT download buttons
 ```
 
+## Development vs Production
+
+| | Development | Production |
+|---|---|---|
+| **Port** | `:4000` only | `:4000` only |
+| **Frontend** | Express serves `client/dist/` (static) | Express serves `client/dist/` (static) |
+| **Hot reload** | Re-run `npm run build` in `client/` after changes | Same |
+| **Vite dev server** | Not used | Not used |
+
+> **Note:** Port `:3000` (Vite dev) is no longer used. Always access the app via `:4000`. After any frontend change, run `cd client && npm run build`, then refresh the browser.
+
 ## Known Issues & TODO
 
 ### Fixed in this update
 
 - **[x] Unified AI endpoint** — merged `/api/reconstruct` + `/api/summarize` into single `/api/transform` with `{type, mode}` dispatch
+- **[x] Single-port deployment** — Express on `:4000` serves both SPA (`client/dist/`) and API. No need to run Vite dev server separately.
 - **[x] `youtube-transcript` package broken** → replaced with `youtube-transcript-plus` v2
 - **[x] LM Studio dependency fragile** → health check endpoint, configurable URL/model via `.env`, timeout handling
-- **[x] `cleanReasoningOutput()` regex hack** → replaced with structured JSON output + shared `REASONING_STRIP_PATTERNS`
+- **[x] `cleanReasoningOutput()` regex hack** → replaced with structured output + shared `REASONING_STRIP_PATTERNS`
 - **[x] No caching** → in-memory cache with TTL for transcripts and transformations
 - **[x] Build output not served** → Express static serving for `client/dist` + SPA catch-all
 - **[x] No environment configuration** → `.env` file support via `dotenv`
 - **[x] SRT export timestamp overlap** → uses next segment start as end time
 - **[x] CSS duplicate rules** — `.reset-button`, `.export-bar`, `.empty-state`, `.video-info` deduplicated
 - **[x] Copy button fails on HTTP/Tailscale** → added `document.execCommand('copy')` fallback via invisible `<textarea>`
-- **[x] Reconstruct progress indicator missing** → added live countdown timer (`AI reconstructing... (42s)`)
+- **[x] Reconstruct progress indicator missing** → added live countdown timer
 - **[x] "New Transcript" button hidden in panels** → moved to top-level `.reset-bar` above video title
 - **[x] AI buttons oversized** → font-size reduced from `1rem` to `0.875rem`
 
@@ -152,9 +169,9 @@ yt-transcript/
 |---|---|---|
 | "No transcript found" on a video that has captions | `youtube-transcript` package is broken for this video | Switch to alternative library (see Known Issues above) |
 | "LM Studio returned an error" / 502 on transform | LM Studio not running or model unloaded | Start LM Studio, load desired model, retry |
-| "Could not connect to LM Studio" | Wrong URL or port | Check `LM_STUDIO_URL` in `server.js`, verify `localhost:1234` |
-| Frontend doesn't load after `npm run build` | Express doesn't serve static files | Add `app.use(express.static(path.join(__dirname, 'client/dist')))` to server.js |
-| Port already in use | Previous instance still running | `lsof -ti:3000 | xargs kill` / `lsof -ti:4000 | xargs kill` |
+| "Could not connect to LM Studio" | Wrong URL or port | Check `LM_STUDIO_URL` in `.env`, verify `localhost:1234` |
+| Frontend doesn't load after code changes | Express serves stale `client/dist/` | Re-run `cd client && npm run build`, then refresh browser |
+| Port already in use | Previous instance still running | `lsof -ti:4000 | xargs kill` |
 
 ## License
 
