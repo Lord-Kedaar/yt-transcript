@@ -63,8 +63,24 @@ chmod +x manage.sh
 | GET | `/api/health` | Health check + LM Studio connection status |
 | GET | `/api/lm-status` | LM Studio model list and load status |
 | GET | `/api/transcript?url=<youtube-url>` | Fetch captions for a video (cached) |
-| POST | `/api/reconstruct` | Reconstruct fragmented text into readable paragraphs |
-| POST | `/api/summarize` | Generate comprehensive bullet-point summary of the transcript |
+| POST | `/api/transform` | Reconstruct or summarize transcript snippets via local LLM |
+
+**`/api/transform` request body:**
+```json
+{
+  "snippets": [{"text":"...","start":0,"duration":5}, ...],
+  "type": "reconstruct" | "summarize",
+  "mode": "original" | "translate"
+}
+```
+
+**`/api/transform` response:**
+```json
+{
+  "reconstructed": "..." // when type = "reconstruct"
+  // or "summary": "..." when type = "summarize"
+}
+```
 
 ### URLs
 
@@ -101,22 +117,26 @@ yt-transcript/
 
 ### Fixed in this update
 
+- **[x] Unified AI endpoint** — merged `/api/reconstruct` + `/api/summarize` into single `/api/transform` with `{type, mode}` dispatch
 - **[x] `youtube-transcript` package broken** → replaced with `youtube-transcript-plus` v2
-- **[x] LM Studio dependency fragile** → health check endpoint, configurable URL/model, timeout handling
-- **[x] `cleanReasoningOutput()` regex hack** → replaced with structured JSON output from LM Studio
-- **[x] No caching** → in-memory cache with TTL for transcripts and reconstructions
+- **[x] LM Studio dependency fragile** → health check endpoint, configurable URL/model via `.env`, timeout handling
+- **[x] `cleanReasoningOutput()` regex hack** → replaced with structured JSON output + shared `REASONING_STRIP_PATTERNS`
+- **[x] No caching** → in-memory cache with TTL for transcripts and transformations
 - **[x] Build output not served** → Express static serving for `client/dist` + SPA catch-all
 - **[x] No environment configuration** → `.env` file support via `dotenv`
 - **[x] SRT export timestamp overlap** → uses next segment start as end time
 - **[x] CSS duplicate rules** — `.reset-button`, `.export-bar`, `.empty-state`, `.video-info` deduplicated
+- **[x] Copy button fails on HTTP/Tailscale** → added `document.execCommand('copy')` fallback via invisible `<textarea>`
+- **[x] Reconstruct progress indicator missing** → added live countdown timer (`AI reconstructing... (42s)`)
+- **[x] "New Transcript" button hidden in panels** → moved to top-level `.reset-bar` above video title
+- **[x] AI buttons oversized** → font-size reduced from `1rem` to `0.875rem`
 
 ### Still open
 
 - **[ ] No error boundaries** — React errors crash the whole app. Add `ErrorBoundary` component.
 - **[ ] No video thumbnail / metadata display** — only title is shown. Add thumbnail, duration, view count.
-- **[ ] No copy-all for raw transcript** — only reconstructed text has a copy button.
-- **[ ] No loading state for reconstruction** — only spinner, no intermediate feedback.
-- **[ ] No keyboard shortcuts** — e.g. Enter to submit URL (partial: Enter works via form), Escape to reset.
+- **[ ] No copy-all for raw transcript** — only reconstructed/summary text has a copy button.
+- **[ ] No keyboard shortcuts** — e.g. Escape to reset, Ctrl+Enter to submit URL.
 
 ### Low priority / nice-to-have (unchanged)
 
@@ -131,7 +151,7 @@ yt-transcript/
 | Problem | Likely cause | Fix |
 |---|---|---|
 | "No transcript found" on a video that has captions | `youtube-transcript` package is broken for this video | Switch to alternative library (see Known Issues above) |
-| "LM Studio returned an error" / 502 on reconstruct | LM Studio not running or model unloaded | Start LM Studio, load `qwen3.6-35b-a3b-mlx-nvfp4`, retry |
+| "LM Studio returned an error" / 502 on transform | LM Studio not running or model unloaded | Start LM Studio, load desired model, retry |
 | "Could not connect to LM Studio" | Wrong URL or port | Check `LM_STUDIO_URL` in `server.js`, verify `localhost:1234` |
 | Frontend doesn't load after `npm run build` | Express doesn't serve static files | Add `app.use(express.static(path.join(__dirname, 'client/dist')))` to server.js |
 | Port already in use | Previous instance still running | `lsof -ti:3000 | xargs kill` / `lsof -ti:4000 | xargs kill` |

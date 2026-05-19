@@ -8,26 +8,22 @@ import SummaryPanel from './components/SummaryPanel';
 import ExportButtons from './components/ExportButtons';
 
 const API_URL = '/api/transcript';
-const RECONSTRUCT_URL = '/api/reconstruct';
-const SUMMARIZE_URL = '/api/summarize';
+const TRANSFORM_URL = '/api/transform';
 
 export default function App() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
-  const [reconstructing, setReconstructing] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
   const [error, setError] = useState('');
   const [transcriptData, setTranscriptData] = useState(null);
   const [reconstructedText, setReconstructedText] = useState('');
-  const [reconstructProgress, setReconstructProgress] = useState('');
-  const [summarizing, setSummarizing] = useState(false);
   const [summaryText, setSummaryText] = useState('');
-  const [summaryProgress, setSummaryProgress] = useState('');
+  const [aiProgress, setAiProgress] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalAction, setModalAction] = useState(null); // 'reconstruct' | 'summarize'
 
   const timerRef = useRef(null);
-  const reconstructAbortRef = useRef(null);
-  const summarizeAbortRef = useRef(null);
+  const aiAbortRef = useRef(null);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -42,9 +38,8 @@ export default function App() {
     setError('');
     setTranscriptData(null);
     setReconstructedText('');
-    setReconstructProgress('');
     setSummaryText('');
-    setSummaryProgress('');
+    setAiProgress('');
 
     try {
       const res = await fetch(`${API_URL}?url=${encodeURIComponent(url.trim())}`);
@@ -74,138 +69,93 @@ export default function App() {
 
   async function handleModalChoice(mode) {
     closeModal();
-    if (modalAction === 'reconstruct') {
-      await handleReconstruct(mode);
-    } else if (modalAction === 'summarize') {
-      await handleSummarize(mode);
-    }
+    if (!modalAction) return;
+    await handleTransform(modalAction, mode);
   }
 
-  async function handleReconstruct(mode = 'original') {
+  async function handleTransform(type, mode = 'original') {
     if (!transcriptData) return;
 
     // Cancel any previous request
-    if (reconstructAbortRef.current) {
-      reconstructAbortRef.current.abort();
+    if (aiAbortRef.current) {
+      aiAbortRef.current.abort();
     }
     const controller = new AbortController();
-    reconstructAbortRef.current = controller;
+    aiAbortRef.current = controller;
 
-    setReconstructing(true);
+    setAiLoading(true);
     setError('');
 
+    const progressLabel = type === 'reconstruct' ? 'AI reconstructing...' : 'AI summarizing...';
     let sec = 0;
-    setReconstructProgress('AI reconstructing...');
+    setAiProgress(progressLabel);
     timerRef.current = setInterval(() => {
       sec += 1;
-      setReconstructProgress(`AI reconstructing... (${sec}s)`);
+      setAiProgress(`${progressLabel} (${sec}s)`);
     }, 1000);
 
     try {
-      const res = await fetch(RECONSTRUCT_URL, {
+      const res = await fetch(TRANSFORM_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ snippets: transcriptData.snippets, mode }),
+        body: JSON.stringify({
+          snippets: transcriptData.snippets,
+          type,
+          mode,
+        }),
         signal: controller.signal,
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error || 'Reconstruction failed');
+        throw new Error(data.error || 'Transformation failed');
       }
 
-      setReconstructedText(data.reconstructed);
+      if (type === 'reconstruct') {
+        setReconstructedText(data.reconstructed);
+        setSummaryText('');
+      } else {
+        setSummaryText(data.summary);
+        setReconstructedText('');
+      }
     } catch (err) {
       if (err.name === 'AbortError') {
-        console.log('Reconstruct aborted');
-        setError('Reconstruction cancelled');
+        console.log('Transform aborted');
+        setError(`${type === 'reconstruct' ? 'Reconstruction' : 'Summarization'} cancelled`);
       } else {
-        setError(err.message || 'Reconstruction failed');
+        setError(err.message || 'Transformation failed');
       }
     } finally {
-      setReconstructing(false);
+      setAiLoading(false);
       if (timerRef.current) clearInterval(timerRef.current);
-      setReconstructProgress('');
-      reconstructAbortRef.current = null;
-    }
-  }
-
-  async function handleSummarize(mode = 'original') {
-    if (!transcriptData) return;
-
-    // Cancel any previous request
-    if (summarizeAbortRef.current) {
-      summarizeAbortRef.current.abort();
-    }
-    const controller = new AbortController();
-    summarizeAbortRef.current = controller;
-
-    setSummarizing(true);
-    setError('');
-
-    let sec = 0;
-    setSummaryProgress('AI summarizing...');
-    timerRef.current = setInterval(() => {
-      sec += 1;
-      setSummaryProgress(`AI summarizing... (${sec}s)`);
-    }, 1000);
-
-    try {
-      const res = await fetch(SUMMARIZE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ snippets: transcriptData.snippets, mode }),
-        signal: controller.signal,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Summarization failed');
-      }
-
-      setSummaryText(data.summary);
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        console.log('Summarize aborted');
-        setError('Summarization cancelled');
-      } else {
-        setError(err.message || 'Summarization failed');
-      }
-    } finally {
-      setSummarizing(false);
-      if (timerRef.current) clearInterval(timerRef.current);
-      setSummaryProgress('');
-      summarizeAbortRef.current = null;
+      setAiProgress('');
+      aiAbortRef.current = null;
     }
   }
 
   function handleReset() {
-    // Cancel any in-flight AI requests
-    if (reconstructAbortRef.current) {
-      reconstructAbortRef.current.abort();
-      reconstructAbortRef.current = null;
-    }
-    if (summarizeAbortRef.current) {
-      summarizeAbortRef.current.abort();
-      summarizeAbortRef.current = null;
+    // Cancel any in-flight AI request
+    if (aiAbortRef.current) {
+      aiAbortRef.current.abort();
+      aiAbortRef.current = null;
     }
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
 
-    setReconstructing(false);
-    setSummarizing(false);
+    setAiLoading(false);
     setUrl('');
     setError('');
     setTranscriptData(null);
     setReconstructedText('');
     setSummaryText('');
-    setReconstructProgress('');
-    setSummaryProgress('');
+    setAiProgress('');
   }
+
+  const isReconstructing = aiLoading && modalAction === 'reconstruct';
+  const isSummarizing = aiLoading && modalAction === 'summarize';
 
   return (
     <div className="app-container">
@@ -238,8 +188,8 @@ export default function App() {
             </div>
 
             <div className="action-buttons">
-              <button className="reconstruct-button" onClick={() => openModal('reconstruct')} disabled={reconstructing || summarizing}>
-                {reconstructing ? (
+              <button className="reconstruct-button" onClick={() => openModal('reconstruct')} disabled={aiLoading}>
+                {isReconstructing ? (
                   <>
                     <span className="spinner-sm"></span>
                     Reconstructing...
@@ -253,8 +203,8 @@ export default function App() {
                   </>
                 )}
               </button>
-              <button className="summarize-button" onClick={() => openModal('summarize')} disabled={reconstructing || summarizing}>
-                {summarizing ? (
+              <button className="summarize-button" onClick={() => openModal('summarize')} disabled={aiLoading}>
+                {isSummarizing ? (
                   <>
                     <span className="spinner-sm"></span>
                     Summarizing...
@@ -274,11 +224,8 @@ export default function App() {
               </button>
             </div>
 
-            {reconstructProgress && (
-              <div className="reconstruct-progress">{reconstructProgress}</div>
-            )}
-            {summaryProgress && (
-              <div className="reconstruct-progress">{summaryProgress}</div>
+            {aiProgress && (
+              <div className="reconstruct-progress">{aiProgress}</div>
             )}
 
             {reconstructedText && (

@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here.
 
+## [2026-05-19] — API refactor: unified /api/transform endpoint
+
+### Changed
+
+- **Merged `/api/reconstruct` + `/api/summarize` into `/api/transform`** — single unified `POST /api/transform` endpoint accepting `{snippets, type, mode}` where `type` is `"reconstruct" | "summarize"`.
+- **De-duplicated backend code** — replaced two near-identical 180-line handlers with one configurable handler + shared prompt library (`TRANSFORM_PROMPTS`).
+- **De-duplicated frontend state** — replaced `reconstructing/summarizing`, `reconstructProgress/summaryProgress`, `reconstructedText/summaryText`, and separate `handleReconstruct`/`handleSummarize` functions with unified `aiLoading`, `aiProgress`, `handleTransform()`, and derived `isReconstructing`/`isSummarizing` flags.
+- **Shared reasoning cleanup** — extracted regex strip patterns into `REASONING_STRIP_PATTERNS` constant array; applied to both reconstruct and summarize output.
+- **Cache key unified** — single `${type}:base64hash` pattern instead of separate `reconstruct:` / `summarize:` prefixes.
+
+### Removed
+
+- **Old endpoints** — `/api/reconstruct` and `/api/summarize` removed. Single-user project; backward compatibility broken intentionally. All frontend traffic now routes to `/api/transform`.
+- **88 lines net deleted** (243 removed, 155 added) across `server.js` + `App.jsx`.
+
+---
+
 ## [2026-05-19] — UI fixes: New Transcript position + AI button font size
 
 ### Fixed

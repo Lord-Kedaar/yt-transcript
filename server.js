@@ -106,26 +106,10 @@ app.get('/api/transcript', async (req, res) => {
   }
 });
 
-// ===== RECONSTRUCT ENDPOINT (LM Studio + qwen3.6-35b-a3b-mlx-nvfp4) =====
-app.post('/api/reconstruct', async (req, res) => {
-  const { snippets, mode } = req.body;
-  const translate = mode === 'translate';
-
-  if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {
-    return res.status(400).json({ error: 'No snippets provided for reconstruction.' });
-  }
-
-  // Check LM Studio health first
-  const lmStatus = await checkLMStudio();
-  if (!lmStatus.ok) {
-    return res.status(503).json({ error: 'LM Studio is unreachable. Please ensure it is running on localhost:1234 with a model loaded.' });
-  }
-
-  // Build raw text from all snippet texts (preserves order)
-  const rawText = snippets.map(s => s.text).join(' ');
-
-  // The prompt: merge fragments into readable paragraphs, preserve ALL words
-  let systemPrompt = `You are a text reconstruction assistant.
+// ===== UNIFIED TRANSFORM ENDPOINT (reconstruct | summarize) =====
+const TRANSFORM_PROMPTS = {
+  reconstruct: {
+    system: `You are a text reconstruction assistant.
 
 INSTRUCTIONS:
 Merge the fragmented transcript snippets back into complete paragraphs.
@@ -140,20 +124,96 @@ OUTPUT RULES:
 - Each paragraph separated by a single blank line (two consecutive newlines)
 - Do NOT add thinking steps, numbered lists, or self-correction notes
 - Do NOT include any meta-commentary like "Paragraph 1" or "Self-correction"
-- NO markdown \`\`\` blocks — output plain text only`;
+- NO markdown \`\`\` blocks — output plain text only`,
+    userPrefix: 'Reconstruct this transcript into readable paragraphs. Keep every word exactly as-is.',
+    userSuffix: 'Format: one blank line between each paragraph.',
+  },
+  summarize: {
+    system: `You are a summarization assistant producing COMPREHENSIVE, DETAILED summaries.
 
+INSTRUCTIONS:
+- Summarize into comprehensive, detailed bullet points covering ALL major themes, sub-topics, and narrative arcs.
+- Do NOT be brief or stop early — every significant thread, argument, or data point in the transcript deserves its own substantive bullet.
+- Each bullet must be a COMPLETE, SUBSTANTIVE paragraph (2-3 sentences, ~30-50 words) that explains not just WHAT was said, but WHY it matters, WHAT the consequence is, or HOW it connects to the broader argument.
+- Do NOT be lapidary or overly terse. Do NOT merely list topics — ANALYZE and EXPLAIN each point's significance.
+- Capture main arguments, supporting evidence, specific examples, data, and any recommendations or conclusions.
+- If the transcript contains multiple distinct topics, ensure EACH gets its own detailed bullet point.
+
+OUTPUT RULES:
+- Return bullet points in the user's language (matching the transcript).
+- no JSON, no code blocks, no numbered lists.
+- Start each bullet with "- " (dash + space).
+- NO markdown \`\`\` blocks — output plain text only.
+- Do NOT include filler, introductions, or meta-commentary.`,
+    userPrefix: 'Summarize this transcript.',
+    userSuffix: '',
+  }
+};
+
+const REASONING_STRIP_PATTERNS = [
+  { re: /^Here's? a thinking process:?\s*/im, label: 'thinking' },
+  { re: /^(?:\d+\.)?\s*\*\*Analyze User Input:\*\*\s*/im, label: 'analyze' },
+  { re: /^(?:\d+\.)?\s*\*\*Identify Key Challenges:\*\*\s*/im, label: 'challenges' },
+  { re: /^(?:\d+\.)?\s*\*\*Process & Reconstruct.*?\*\*\s*/im, label: 'process' },
+  { re: /^(?:\d+\.)?\s*\*\*Self-Correction\/Refinement.*?\*\*\s*/im, label: 'self-correction' },
+  { re: /\*Paragraph \d+:\*\s*/gi, label: 'paragraph-tag' },
+  { re: /\*Self-Correction\/Refinement.*?\*\s*/gi, label: 'self-correction-block' },
+  { re: /\*Check against constraints:\*\s*/gi, label: 'constraints' },
+  { re: /\*Text to output:\*\s*/gi, label: 'output-tag' },
+  { re: /Let's draft it out carefully\.\s*/gi, label: 'draft' },
+  { re: /I wіll carefully (?:check|paste|construct|output)\..*?\s*/gi, label: 'iwl' },
+  { re: /Actually,? I'?ll just output.*?\s*/gi, label: 'actually' },
+  { re: /I'?ll format it carefully\.\s*/gi, label: 'format' },
+];
+
+app.post('/api/transform', async (req, res) => {
+  const { snippets, type, mode } = req.body;
+  const translate = mode === 'translate';
+
+  if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {
+    return res.status(400).json({ error: 'No snippets provided.' });
+  }
+
+  if (!type || !TRANSFORM_PROMPTS[type]) {
+    return res.status(400).json({ error: 'Invalid type. Use "reconstruct" or "summarize".' });
+  }
+
+  const lmStatus = await checkLMStudio();
+  if (!lmStatus.ok) {
+    return res.status(503).json({ error: 'LM Studio is unreachable. Please ensure it is running with a model loaded.' });
+  }
+
+  const promptDef = TRANSFORM_PROMPTS[type];
+
+  // Build raw text + cap snippet count
+  let rawText;
+  if (type === 'reconstruct') {
+    const MAX_SNIPPETS = 300;
+    if (snippets.length > MAX_SNIPPETS) {
+      console.warn(`Transform/reconstruct: capping ${snippets.length} snippets to ${MAX_SNIPPETS}`);
+    }
+    const capped = snippets.slice(0, MAX_SNIPPETS);
+    rawText = capped.map(s => s.text).join(' ');
+  } else {
+    rawText = snippets.map(s => s.text).join(' ');
+  }
+
+  // Build system prompt
+  let systemPrompt = promptDef.system;
   if (translate) {
-    systemPrompt += `\n\nTRANSLATION:\n- Translate the entire reconstructed text into Polish (język polski).\n- Keep the paragraph structure and ALL meaning intact.\n- Translate all content — do NOT leave any part in the original language.`;
+    if (type === 'reconstruct') {
+      systemPrompt += `\n\nTRANSLATION:\n- Translate the entire reconstructed text into Polish (język polski).\n- Keep the paragraph structure and ALL meaning intact.\n- Translate all content — do NOT leave any part in the original language.`;
+    } else {
+      systemPrompt += `\n\nTRANSLATION:\n- Translate the entire summary into Polish (język polski).\n- Each bullet point must be written in Polish.\n- Preserve ALL meaning, facts, and nuances — do NOT summarize further during translation.\n- Translate all content — do NOT leave any part in the original language.`;
+    }
   }
 
-  const MAX_SNIPPETS = 300;
-  if (snippets.length > MAX_SNIPPETS) {
-    console.warn(`Reconstruct: capping ${snippets.length} snippets to ${MAX_SNIPPETS}`);
+  // Build user prompt
+  let userPrompt = promptDef.userPrefix;
+  userPrompt += `\n\n${rawText}`;
+  if (promptDef.userSuffix) {
+    userPrompt += `\n\n${promptDef.userSuffix}`;
   }
-  const limitedSnippets = snippets.slice(0, MAX_SNIPPETS);
-  const limitedRawText = limitedSnippets.map(s => s.text).join(' ');
-
-  const userPrompt = `Reconstruct this transcript into readable paragraphs. Keep every word exactly as-is.\n\n${limitedRawText}\n\nFormat: one blank line between each paragraph.`;
 
   try {
     const response = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
@@ -187,142 +247,47 @@ OUTPUT RULES:
     let rawContent = msg.content || '';
     const reasoning = msg.reasoning_content || '';
 
-    // Model sometimes puts everything in reasoning_content
+    // Fallback: reasoning_content sometimes has the actual output
     if (!rawContent.trim() && reasoning.trim()) {
       rawContent = reasoning;
     }
 
-    let reconstructed = rawContent.trim();
+    let output = rawContent.trim();
 
-    // Strip reasoning model's meta-commentary before sending to user
-    reconstructed = reconstructed
-      .replace(/^Here's? a thinking process:?\s*/im, '')
-      .replace(/^(?:\d+\.)?\s*\*\*Analyze User Input:\*\*\s*/im, '')
-      .replace(/^(?:\d+\.)?\s*\*\*Identify Key Challenges:\*\*\s*/im, '')
-      .replace(/^(?:\d+\.)?\s*\*\*Process & Reconstruct.*?\*\*\s*/im, '')
-      .replace(/^(?:\d+\.)?\s*\*\*Self-Correction\/Refinement.*?\*\*\s*/im, '')
-      .replace(/\*Paragraph \d+:\*\s*/gi, '')
-      .replace(/\*Self-Correction\/Refinement.*?\*\s*/gi, '')
-      .replace(/\*Check against constraints:\*\s*/gi, '')
-      .replace(/\*Text to output:\*\s*/gi, '')
-      .replace(/Let's draft it out carefully\.\s*/gi, '')
-      .replace(/I wіll carefully (?:check|paste|construct|output)\..*?\s*/gi, '')
-      .replace(/Actually,? I'?ll just output.*?\s*/gi, '')
-      .replace(/I'?ll format it carefully\.\s*/gi, '')
-      .trim();
+    // Strip reasoning meta-commentary
+    for (const pattern of REASONING_STRIP_PATTERNS) {
+      output = output.replace(pattern.re, '');
+    }
+    output = output.trim();
 
-    if (!reconstructed.trim()) {
+    if (!output) {
       return res.status(500).json({ error: 'LM Studio returned an empty response.' });
     }
 
-    // Cache the reconstruction result by a hash of snippet texts
-    const cacheKey = `reconstruct:${Buffer.from(snippets.map(s => s.text).join(' ')).toString('base64')}`;
-    setCache(cacheKey, { reconstructed, snippetCount: snippets.length, model: LM_STUDIO_MODEL });
+    // Cache result
+    const cacheKey = `${type}:${Buffer.from(snippets.map(s => s.text).join(' ')).toString('base64')}`;
+    setCache(cacheKey, { output, type, snippetCount: snippets.length, model: LM_STUDIO_MODEL });
 
+    const responseKey = type === 'reconstruct' ? 'reconstructed' : 'summary';
     res.json({
-      reconstructed,
+      [responseKey]: output,
       snippetCount: snippets.length,
       model: LM_STUDIO_MODEL,
     });
 
   } catch (err) {
-    console.error('Reconstruct error:', err);
-    res.status(502).json({
-      error: err.message || 'Reconstruction failed',
-    });
+    console.error(`Transform/${type} error:`, err);
+    res.status(502).json({ error: err.message || `Transformation failed` });
   }
 });
 
-// ===== SUMMARIZE ENDPOINT =====
-app.post('/api/summarize', async (req, res) => {
-  const { snippets, mode } = req.body;
-  const translate = mode === 'translate';
-
-  if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {
-    return res.status(400).json({ error: 'No snippets provided for summarization.' });
-  }
-
-  const lmStatus = await checkLMStudio();
-  if (!lmStatus.ok) {
-    return res.status(503).json({ error: 'LM Studio is unreachable.' });
-  }
-
-  const rawText = snippets.map(s => s.text).join(' ');
-
-  let systemPrompt = `You are a summarization assistant producing COMPREHENSIVE, DETAILED summaries.
-
-INSTRUCTIONS:
-- Summarize into comprehensive, detailed bullet points covering ALL major themes, sub-topics, and narrative arcs.
-- Do NOT be brief or stop early — every significant thread, argument, or data point in the transcript deserves its own substantive bullet.
-- Each bullet must be a COMPLETE, SUBSTANTIVE paragraph (2-3 sentences, ~30-50 words) that explains not just WHAT was said, but WHY it matters, WHAT the consequence is, or HOW it connects to the broader argument.
-- Do NOT be lapidary or overly terse. Do NOT merely list topics — ANALYZE and EXPLAIN each point's significance.
-- Capture main arguments, supporting evidence, specific examples, data, and any recommendations or conclusions.
-- If the transcript contains multiple distinct topics, ensure EACH gets its own detailed bullet point.
-
-OUTPUT RULES:
-- Return bullet points in the user's language (matching the transcript).
-- no JSON, no code blocks, no numbered lists.
-- Start each bullet with "- " (dash + space).
-- NO markdown \`\`\` blocks — output plain text only.
-- Do NOT include filler, introductions, or meta-commentary.`;
-
-  if (translate) {
-    systemPrompt += `\n\nTRANSLATION:\n- Translate the entire summary into Polish (język polski).\n- Each bullet point must be written in Polish.\n- Preserve ALL meaning, facts, and nuances — do NOT summarize further during translation.\n- Translate all content — do NOT leave any part in the original language.`;
-  }
-
-  const userPrompt = `Summarize this transcript.\n\n${rawText}`;
-
-  try {
-    const response = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: LM_STUDIO_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 32768,
-        temperature: 0.1,
-      }),
-      signal: AbortSignal.timeout(1800000),
-    });
-
-    if (!response.ok) {
-      const errData = await response.text();
-      console.error('LM Studio error:', errData);
-      return res.status(502).json({ error: 'LM Studio returned an error. Is the model loaded?' });
-    }
-
-    const data = await response.json();
-    const choice = data.choices?.[0];
-    if (!choice) {
-      return res.status(500).json({ error: 'LM Studio returned no choices.' });
-    }
-
-    const msg = choice.message || {};
-    const rawContent = msg.content || msg.reasoning_content || '';
-    let summary = rawContent.trim();
-
-    if (!summary) {
-      return res.status(500).json({ error: 'LM Studio returned an empty response.' });
-    }
-
-    res.json({ summary, snippetCount: snippets.length, model: LM_STUDIO_MODEL });
-
-  } catch (err) {
-    console.error('Summarize error:', err);
-    res.status(502).json({ error: err.message || 'Summarization failed' });
-  }
-});
-
-// F. LM Studio health endpoint
+// LM Studio health endpoint
 app.get('/api/lm-status', async (req, res) => {
   const status = await checkLMStudio();
   res.json(status);
 });
 
-// H. Static file serving for production
+// Static file serving for production
 import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
