@@ -24,7 +24,7 @@ start_backend() {
 
 start_frontend() {
   cd "$PROJECT_DIR/client" || exit 1
-  nohup node node_modules/vite/bin/vite.js --host 0.0.0.0 --port 3000 > "$LOG_DIR/frontend-out.log" 2> "$LOG_DIR/frontend-error.log" &
+  nohup node node_modules/vite/bin/vite.js --force --host 0.0.0.0 --port 3000 > "$LOG_DIR/frontend-out.log" 2> "$LOG_DIR/frontend-error.log" &
   sleep 2
   if lsof -i:3000 >/dev/null 2>&1; then
     echo "  ✓ Frontend (port 3000)"

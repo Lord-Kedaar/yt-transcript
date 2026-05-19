@@ -16,7 +16,7 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 ┌─────────────────┐         ┌──────────────────┐         ┌───────────────┐
 │  Browser        │ HTTP    │  Express Server   │ TCP     │  LM Studio    │
 │  React + Vite   │◄───────►│  Port 4000       │────────►│  Port 1234    │
-│  :3000          │         │                  │         │  qwen3.6-35b  │
+│  :3000          │         │                  │         │  bielik-11b    │
 └─────────────────┘         └──────────────────┘         └───────────────┘
                                 │
                                 ▼
