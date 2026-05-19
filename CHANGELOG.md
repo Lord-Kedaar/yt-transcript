@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here.
 
+## [2026-05-18] — Summarize endpoint + prompt v3.0
+
+### Added
+
+- **`/api/summarize` endpoint** — generates comprehensive, detailed bullet-point summaries from transcript snippets using LM Studio.
+  - Model: `bielik-11b-v3.0-mlx` (32K context, local).
+  - Prompt v3.0: comprehensive, detailed coverage of ALL major themes with substantive 2-3 sentence bullets (~30-50 words each).
+  - `max_tokens: 32768`, `timeout: 1800s` for long transcripts.
+
+### Changed
+
+- **Summarize prompt v3.0** — removed rigid "Minimum 8 / Maximum 15" fake constraint (Bielik 11B did not respect it). Replaced with quality-first instruction: "Do NOT be brief or stop early — every significant thread deserves its own substantive bullet."
+- **Summarize `max_tokens`** — `8192 → 32768` (full model capacity).
+- **Summarize `timeout`** — `900000ms → 1800000ms` (30 min, scales linearly with token budget).
+
+---
+
 ## [2026-05-18] — Emergency stability fixes
 
 ### Fixed
@@ -54,7 +71,6 @@ All notable changes to this project are documented here.
 
 ### Known Issues (remaining)
 
-- No `.gitignore` present — `.env` and `node_modules` should be ignored.
 - No error boundaries in React.
 - No video thumbnail / metadata beyond title.
 
@@ -82,87 +98,49 @@ All notable changes to this project are documented here.
 
 ---
 
-## What didn't work (and needs fixing)
+## What didn't work (historical — all resolved)
 
-### 1. `youtube-transcript` package is broken for many videos
+> This section documents the original pain points from the initial scaffold. All have been resolved in subsequent releases above.
 
-The npm package `youtube-transcript` (v1.2.1) is unmaintained and fails against YouTube's current API. Videos with working captions often return "transcript not available" or throw errors. This is the **single biggest blocker** — without reliable transcript fetching, the rest of the pipeline is useless.
+### 1. `youtube-transcript` package broken — **RESOLVED**
+- **Fix:** Replaced with `youtube-transcript-plus` v2.
+- **Where:** See `[Updated] — Backend infrastructure rewrite`.
 
-**What needs to happen:**
-- Replace with a maintained library (`youtubei.js` / `ytpl`-style approach, or parse YouTube's `captions.ttml` endpoint directly).
-- Add fallback: if the primary library fails, try an alternative method (e.g., scraping the captions URL from page source).
-- Add a video-level "test" — check if captions are available before attempting to fetch.
+### 2. LM Studio integration fragile — **RESOLVED**
+- **Fix:** Added `/api/health`, `/api/lm-status`, `.env` configuration (`LM_STUDIO_URL`, `LM_STUDIO_MODEL`), `AbortSignal.timeout()`.
+- **Where:** See `[Updated] — Backend infrastructure rewrite`.
 
-### 2. LM Studio integration is fragile and opaque
+### 3. `cleanReasoningOutput()` regex hack — **RESOLVED**
+- **Fix:** Switched to structured JSON output, then plain text with aggressive meta-commentary stripping.
+- **Where:** See `[2026-05-18] — Copy button fix + reasoning cleanup`.
 
-The `/api/reconstruct` endpoint assumes:
-- LM Studio is running at exactly `localhost:1234`.
-- The model `qwen3.6-35b-a3b-mlx-nvfp4` is loaded.
-- The model outputs to `reasoning_content` (not `content`).
+### 4. No caching — **RESOLVED**
+- **Fix:** In-memory `Map` cache with TTL (default 60 min) for transcripts and reconstructions.
+- **Where:** See `[Updated] — Backend infrastructure rewrite`.
 
-If any of these assumptions fail, the user sees a generic 502 error with no guidance on what went wrong.
+### 5. Build output not served — **RESOLVED**
+- **Fix:** `app.use(express.static(...))` + SPA catch-all route in production.
+- **Where:** See `[Updated] — Backend infrastructure rewrite`.
 
-**What needs to happen:**
-- Add `/api/health` for LM Studio (or a new endpoint) so the frontend can show "LM Studio connected" / "LM Studio not reachable".
-- Make `LM_STUDIO_URL` configurable via `.env`.
-- Improve error messages — distinguish between "LM Studio not running", "model not loaded", and "response empty".
-- Add a timeout to prevent hanging requests.
+### 6. No environment configuration — **RESOLVED**
+- **Fix:** `.env` support via `dotenv`, all tunables (PORT, LM_STUDIO_URL, LM_STUDIO_MODEL, CACHE_TTL_MINUTES).
+- **Where:** See `[Updated] — Backend infrastructure rewrite`.
 
-### 3. `cleanReasoningOutput()` is a regex hack
-
-The cleanup function uses brittle regex patterns to strip thinking-process markers from qwen's output. Different model versions, different temperatures, and even different prompts produce different output formats. This approach will break as soon as the model changes its thinking format.
-
-**What needs to happen:**
-- Use a structured response: ask the model to output JSON with an explicit `output` field.
-- Or switch to a non-reasoning model variant for this task (reasoning is unnecessary for text reconstruction).
-- Or use a dedicated prompt format that avoids thinking entirely (e.g., system prompt with `Do not think aloud, output only the result`).
-
-### 4. No caching — every request hits YouTube fresh
-
-There is no caching layer. The same video URL fetched twice triggers two full transcript extractions, two LLM calls (if reconstructed), and two title fetches.
-
-**What needs to happen:**
-- Add in-memory cache (Map by video ID) with TTL (e.g., 1 hour).
-- Or file-based cache under `.cache/` for persistence across restarts.
-
-### 5. Build output is not served
-
-`npm run build` in the client directory produces a `dist/` folder, but the Express server does not serve it. There is no production mode — only `npm start` which runs the API server without the frontend.
-
-**What needs to happen:**
-- Add `app.use(express.static(path.join(__dirname, 'client/dist')))` in production.
-- Add a catch-all route for SPA routing: `app.get('*', (req, res) => res.sendFile(...))`.
-- Or configure a proper deployment target (Vercel, Railway, etc.).
-
-### 6. No environment configuration
-
-All configuration is hardcoded in `server.js`:
-- `PORT = 4000`
-- `LM_STUDIO_URL = 'http://localhost:1234'`
-- Model name `qwen3.6-35b-a3b-mlx-nvfp4`
-- LM Studio port hardcoded in the frontend proxy config
-
-**What needs to happen:**
-- Add `.env` support via `dotenv`.
-- Move all magic strings to env vars or a config object.
-
-### 7. CSS has duplicate rules
-
-`client/src/styles/main.css` contains duplicate definitions for `.reset-button`, `.export-bar`, `.empty-state`, and `.video-info`. The second definitions override the first, but this is accidental and confusing.
-
-**What needs to happen:**
-- Deduplicate the CSS file — remove the first set of definitions for each duplicated class.
+### 7. CSS duplicate rules — **RESOLVED**
+- **Fix:** Deduplicated `.reset-button`, `.export-bar`, `.empty-state`, `.video-info`.
+- **Where:** See `[Updated] — Backend infrastructure rewrite`.
 
 ---
 
-## Priority summary (what to tackle next)
+## Priority summary (remaining open items)
 
 | Priority | Issue | Impact |
 |---|---|---|
-| **P0** | Replace `youtube-transcript` with working alternative | Core functionality broken for many videos |
-| **P0** | Add LM Studio health check + better errors | User can't diagnose failures |
-| **P1** | Fix `cleanReasoningOutput()` — use structured output or non-reasoning model | Fragile regex will break on model update |
-| **P1** | Add caching (in-memory or file-based) | Prevents redundant API calls, saves LLM tokens |
-| **P2** | Serve built frontend in production | `npm run build` produces dead output |
-| **P2** | Add `.env` configuration | Hardcoded values block deployment |
-| **P3** | Deduplicate CSS | Code quality |
+| **P2** | No error boundaries in React | App crash on component error |
+| **P2** | No video thumbnail / metadata beyond title | Poor UX |
+| **P2** | No copy-all for raw transcript | UX gap |
+| **P2** | No loading state for reconstruction | User uncertainty |
+| **P2** | No keyboard shortcuts | Accessibility |
+| **P3** | Dark/light theme toggle | Nice-to-have |
+| **P3** | Multi-language support | Nice-to-have |
+| **P3** | Shareable links | Nice-to-have |

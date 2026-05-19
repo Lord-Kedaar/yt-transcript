@@ -4,10 +4,11 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 
 ## What it does
 
-1. **Paste a YouTube URL** → the backend fetches available captions via `youtube-transcript`.
+1. **Paste a YouTube URL** → the backend fetches available captions via `youtube-transcript-plus`.
 2. **Review raw segments** → timestamped transcript panels with hover/click highlighting.
-3. **AI Reconstruct** → sends the fragmented snippets to LM Studio (`qwen3.6-35b-a3b-mlx-nvfp4`) which merges broken-up sentences back into proper paragraphs.
-4. **Export** → download as TXT or SRT subtitle files.
+3. **AI Reconstruct** → sends the fragmented snippets to LM Studio which merges broken-up sentences back into readable paragraphs.
+4. **AI Summarize** → generates comprehensive, detailed bullet-point summaries covering all major themes.
+5. **Export** → download as TXT or SRT subtitle files.
 
 ## Architecture
 
@@ -24,12 +25,12 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 ```
 
 | Layer | Stack |
-|---|---|
+|---|---|---|
 | Frontend | React 18 + Vite 5, dark theme CSS |
 | Backend | Node.js + Express 4, `youtube-transcript-plus` npm package |
-| LLM | LM Studio local server (`localhost:1234`), configurable model via `.env` |
+| LLM | LM Studio local server (`localhost:1234`), configurable model via `.env` (default: `bielik-11b-v3.0-mlx`) |
 | Cache | In-memory Map with TTL |
-| Launch | `manage.sh` (macOS LaunchAgents) or `start.sh` (foreground) |
+| Launch | `manage.sh` (nohup-based start/stop/restart/status) or `start.sh` (foreground dev) |
 
 ## Quickstart
 
@@ -62,7 +63,8 @@ chmod +x manage.sh
 | GET | `/api/health` | Health check + LM Studio connection status |
 | GET | `/api/lm-status` | LM Studio model list and load status |
 | GET | `/api/transcript?url=<youtube-url>` | Fetch captions for a video (cached) |
-| POST | `/api/reconstruct` | Reconstruct fragmented text (structured JSON output) |
+| POST | `/api/reconstruct` | Reconstruct fragmented text into readable paragraphs |
+| POST | `/api/summarize` | Generate comprehensive bullet-point summary of the transcript |
 
 ### URLs
 
@@ -76,7 +78,7 @@ chmod +x manage.sh
 ```
 yt-transcript/
 ├── server.js                    # Express backend: transcript fetch + LM Studio proxy
-├── manage.sh                    # macOS LaunchAgent lifecycle (start/stop/restart/status)
+├── manage.sh                    # nohup-based service manager (start/stop/restart/status)
 ├── start.sh                     # Foreground dev launcher (kills old, starts both)
 ├── package.json                 # Root: Express + youtube-transcript deps
 │
@@ -86,7 +88,7 @@ yt-transcript/
     ├── package.json
     └── src/
         ├── api.js               # fetchTranscript, exportToTXT/SRT helpers
-        ├── App.jsx              # Main app: URL input → transcript → reconstruct → export
+        ├── App.jsx              # Main app: URL input → transcript → reconstruct → summarize → export
         └── components/
             ├── Header.jsx       # Logo + subtitle
             ├── UrlInput.jsx     # URL text field + fetch button
@@ -115,7 +117,6 @@ yt-transcript/
 - **[ ] No copy-all for raw transcript** — only reconstructed text has a copy button.
 - **[ ] No loading state for reconstruction** — only spinner, no intermediate feedback.
 - **[ ] No keyboard shortcuts** — e.g. Enter to submit URL (partial: Enter works via form), Escape to reset.
-- **[ ] No `.gitignore`** — add standard Node.js `.gitignore`.
 
 ### Low priority / nice-to-have (unchanged)
 
