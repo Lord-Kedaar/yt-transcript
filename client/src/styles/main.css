@@ -354,6 +354,14 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .reconstruct-button,
+  .summarize-button {
+    font-size: 0.85rem;
+    white-space: nowrap;
+    min-width: 0;
+    overflow: hidden;
+  }
+
   .video-info h2 {
     font-size: 1rem;
   }
@@ -563,6 +571,30 @@ body {
 }
 
 .save-button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.reset-panel-button {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.reset-panel-button:hover {
+  background: #c0392b;
+  border-color: #c0392b;
+}
+
+.reset-panel-button svg {
   width: 14px;
   height: 14px;
 }

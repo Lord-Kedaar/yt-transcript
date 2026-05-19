@@ -246,15 +246,18 @@ app.post('/api/summarize', async (req, res) => {
   const systemPrompt = `You are a summarization assistant.
 
 INSTRUCTIONS:
-- Summarize the transcript concisely in 3 to 6 bullet points.
+- Summarize the transcript into concise but INFORMATIVE bullet points. Each bullet must contain at least 15-20 words and include some specific detail or consequence.
+- Do NOT be lapidary or overly terse. Explain the significance or outcome of each point.
 - Each bullet point must be a complete sentence.
 - Capture the key themes, main topics, and important takeaways only.
 - Do NOT include filler, introductions, or meta-commentary.
 
 OUTPUT RULES:
-- Return ONLY bullet points — no JSON, no code blocks, no numbered lists.
+- Return bullet points in the user's language (matching the transcript).
+- no JSON, no code blocks, no numbered lists.
 - Start each bullet with "- " (dash + space).
-- NO markdown \`\`\` blocks — output plain text only.`;
+- NO markdown \`\`\` blocks — output plain text only.
+- Each bullet 1-2 sentences with specific facts, numbers, or consequences wherever possible.`;
 
   const userPrompt = `Summarize this transcript.\n\n${rawText}`;
 
