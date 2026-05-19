@@ -108,7 +108,8 @@ app.get('/api/transcript', async (req, res) => {
 
 // ===== RECONSTRUCT ENDPOINT (LM Studio + qwen3.6-35b-a3b-mlx-nvfp4) =====
 app.post('/api/reconstruct', async (req, res) => {
-  const { snippets } = req.body;
+  const { snippets, mode } = req.body;
+  const translate = mode === 'translate';
 
   if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {
     return res.status(400).json({ error: 'No snippets provided for reconstruction.' });
@@ -124,7 +125,7 @@ app.post('/api/reconstruct', async (req, res) => {
   const rawText = snippets.map(s => s.text).join(' ');
 
   // The prompt: merge fragments into readable paragraphs, preserve ALL words
-  const systemPrompt = `You are a text reconstruction assistant.
+  let systemPrompt = `You are a text reconstruction assistant.
 
 INSTRUCTIONS:
 Merge the fragmented transcript snippets back into complete paragraphs.
@@ -140,6 +141,10 @@ OUTPUT RULES:
 - Do NOT add thinking steps, numbered lists, or self-correction notes
 - Do NOT include any meta-commentary like "Paragraph 1" or "Self-correction"
 - NO markdown \`\`\` blocks — output plain text only`;
+
+  if (translate) {
+    systemPrompt += `\n\nTRANSLATION:\n- Translate the entire reconstructed text into Polish (język polski).\n- Keep the paragraph structure and ALL meaning intact.\n- Translate all content — do NOT leave any part in the original language.`;
+  }
 
   const MAX_SNIPPETS = 300;
   if (snippets.length > MAX_SNIPPETS) {
@@ -230,7 +235,8 @@ OUTPUT RULES:
 
 // ===== SUMMARIZE ENDPOINT =====
 app.post('/api/summarize', async (req, res) => {
-  const { snippets } = req.body;
+  const { snippets, mode } = req.body;
+  const translate = mode === 'translate';
 
   if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {
     return res.status(400).json({ error: 'No snippets provided for summarization.' });
@@ -243,7 +249,7 @@ app.post('/api/summarize', async (req, res) => {
 
   const rawText = snippets.map(s => s.text).join(' ');
 
-  const systemPrompt = `You are a summarization assistant producing COMPREHENSIVE, DETAILED summaries.
+  let systemPrompt = `You are a summarization assistant producing COMPREHENSIVE, DETAILED summaries.
 
 INSTRUCTIONS:
 - Summarize into comprehensive, detailed bullet points covering ALL major themes, sub-topics, and narrative arcs.
@@ -259,6 +265,10 @@ OUTPUT RULES:
 - Start each bullet with "- " (dash + space).
 - NO markdown \`\`\` blocks — output plain text only.
 - Do NOT include filler, introductions, or meta-commentary.`;
+
+  if (translate) {
+    systemPrompt += `\n\nTRANSLATION:\n- Translate the entire summary into Polish (język polski).\n- Each bullet point must be written in Polish.\n- Preserve ALL meaning, facts, and nuances — do NOT summarize further during translation.\n- Translate all content — do NOT leave any part in the original language.`;
+  }
 
   const userPrompt = `Summarize this transcript.\n\n${rawText}`;
 

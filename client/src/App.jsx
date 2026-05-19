@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import './styles/main.css';
 import Header from './components/Header';
 import UrlInput from './components/UrlInput';
@@ -22,7 +22,18 @@ export default function App() {
   const [summarizing, setSummarizing] = useState(false);
   const [summaryText, setSummaryText] = useState('');
   const [summaryProgress, setSummaryProgress] = useState('');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalAction, setModalAction] = useState(null); // 'reconstruct' | 'summarize'
+
   const timerRef = useRef(null);
+  const reconstructAbortRef = useRef(null);
+  const summarizeAbortRef = useRef(null);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    document.body.style.overflow = modalOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [modalOpen]);
 
   async function handleFetch() {
     if (!url.trim()) return;
@@ -32,6 +43,8 @@ export default function App() {
     setTranscriptData(null);
     setReconstructedText('');
     setReconstructProgress('');
+    setSummaryText('');
+    setSummaryProgress('');
 
     try {
       const res = await fetch(`${API_URL}?url=${encodeURIComponent(url.trim())}`);
@@ -49,13 +62,38 @@ export default function App() {
     }
   }
 
-  async function handleReconstruct() {
+  function openModal(action) {
+    setModalAction(action);
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    setModalAction(null);
+  }
+
+  async function handleModalChoice(mode) {
+    closeModal();
+    if (modalAction === 'reconstruct') {
+      await handleReconstruct(mode);
+    } else if (modalAction === 'summarize') {
+      await handleSummarize(mode);
+    }
+  }
+
+  async function handleReconstruct(mode = 'original') {
     if (!transcriptData) return;
 
-    setReconstructing(true);
-    setError('');                 // clear previous errors
+    // Cancel any previous request
+    if (reconstructAbortRef.current) {
+      reconstructAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    reconstructAbortRef.current = controller;
 
-    // Progress timer — users need to know LM inference takes ~2-3 min
+    setReconstructing(true);
+    setError('');
+
     let sec = 0;
     setReconstructProgress('AI reconstructing...');
     timerRef.current = setInterval(() => {
@@ -67,7 +105,8 @@ export default function App() {
       const res = await fetch(RECONSTRUCT_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ snippets: transcriptData.snippets }),
+        body: JSON.stringify({ snippets: transcriptData.snippets, mode }),
+        signal: controller.signal,
       });
 
       const data = await res.json();
@@ -78,16 +117,29 @@ export default function App() {
 
       setReconstructedText(data.reconstructed);
     } catch (err) {
-      setError(err.message || 'Reconstruction failed');
+      if (err.name === 'AbortError') {
+        console.log('Reconstruct aborted');
+        setError('Reconstruction cancelled');
+      } else {
+        setError(err.message || 'Reconstruction failed');
+      }
     } finally {
       setReconstructing(false);
       if (timerRef.current) clearInterval(timerRef.current);
       setReconstructProgress('');
+      reconstructAbortRef.current = null;
     }
   }
 
-  async function handleSummarize() {
+  async function handleSummarize(mode = 'original') {
     if (!transcriptData) return;
+
+    // Cancel any previous request
+    if (summarizeAbortRef.current) {
+      summarizeAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    summarizeAbortRef.current = controller;
 
     setSummarizing(true);
     setError('');
@@ -103,7 +155,8 @@ export default function App() {
       const res = await fetch(SUMMARIZE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ snippets: transcriptData.snippets }),
+        body: JSON.stringify({ snippets: transcriptData.snippets, mode }),
+        signal: controller.signal,
       });
 
       const data = await res.json();
@@ -114,15 +167,37 @@ export default function App() {
 
       setSummaryText(data.summary);
     } catch (err) {
-      setError(err.message || 'Summarization failed');
+      if (err.name === 'AbortError') {
+        console.log('Summarize aborted');
+        setError('Summarization cancelled');
+      } else {
+        setError(err.message || 'Summarization failed');
+      }
     } finally {
       setSummarizing(false);
       if (timerRef.current) clearInterval(timerRef.current);
       setSummaryProgress('');
+      summarizeAbortRef.current = null;
     }
   }
 
   function handleReset() {
+    // Cancel any in-flight AI requests
+    if (reconstructAbortRef.current) {
+      reconstructAbortRef.current.abort();
+      reconstructAbortRef.current = null;
+    }
+    if (summarizeAbortRef.current) {
+      summarizeAbortRef.current.abort();
+      summarizeAbortRef.current = null;
+    }
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
+    setReconstructing(false);
+    setSummarizing(false);
     setUrl('');
     setError('');
     setTranscriptData(null);
@@ -153,7 +228,7 @@ export default function App() {
             </div>
 
             <div className="action-buttons">
-              <button className="reconstruct-button" onClick={handleReconstruct} disabled={reconstructing || summarizing}>
+              <button className="reconstruct-button" onClick={() => openModal('reconstruct')} disabled={reconstructing || summarizing}>
                 {reconstructing ? (
                   <>
                     <span className="spinner-sm"></span>
@@ -168,7 +243,7 @@ export default function App() {
                   </>
                 )}
               </button>
-              <button className="summarize-button" onClick={handleSummarize} disabled={reconstructing || summarizing}>
+              <button className="summarize-button" onClick={() => openModal('summarize')} disabled={reconstructing || summarizing}>
                 {summarizing ? (
                   <>
                     <span className="spinner-sm"></span>
@@ -218,6 +293,46 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Language Choice Modal */}
+      {modalOpen && (
+        <div className="modal-overlay" onClick={closeModal}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Choose Language</h3>
+              <button className="modal-close" onClick={closeModal} title="Cancel">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            </div>
+            <div className="modal-body">
+              <button className="modal-choice-btn" onClick={() => handleModalChoice('original')}>
+                <span className="modal-choice-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 20v-8m0 0V4m0 8h8m-8 0H4"/>
+                  </svg>
+                </span>
+                <div className="modal-choice-text">
+                  <strong>Keep original language</strong>
+                  <span>Reconstruct in the language of the transcript</span>
+                </div>
+              </button>
+              <button className="modal-choice-btn modal-choice-translate" onClick={() => handleModalChoice('translate')}>
+                <span className="modal-choice-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M2 5h20M2 12h10M2 19h7"/>
+                  </svg>
+                </span>
+                <div className="modal-choice-text">
+                  <strong>Translate to Polish</strong>
+                  <span>Przetłumacz na język polski</span>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <footer className="app-footer">
         ytTranscript &mdash; YouTube Transcript Extractor + AI Reconstruct

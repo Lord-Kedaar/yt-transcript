@@ -2,6 +2,28 @@
 
 All notable changes to this project are documented here.
 
+## [2026-05-18] — Language Choice Modal + AbortController + New Transcript
+
+### Added
+
+- **Language Choice Modal** — clicking "Reconstruct with AI" or "Summarize with AI" now opens a modal with two options:
+  - **"Keep original language"** — reconstruct/summarize in the transcript's native language.
+  - **"Translate to Polish"** — reconstruct/summarize and translate output into Polish via LLM.
+  - Backend endpoints `/api/reconstruct` and `/api/summarize` accept optional `mode` field (`'original' | 'translate'`).
+  - Polish translation instruction appended to system prompt: "Translate the entire reconstructed text into Polish (język polski)."
+
+- **AbortController for AI requests** — clicking "New Transcript" (formerly "New Search") now cancels any in-flight `reconstruct` or `summarize` HTTP requests, stops progress timers, and resets state cleanly.
+  - Added `reconstructAbortRef` and `summarizeAbortRef` refs holding `AbortController` instances.
+  - `handleReset()` now aborts pending requests and resets UI state to idle.
+  - Both `reconstruct` and `summarize` handlers create new `AbortController` per call and detect `AbortError`.
+
+### Changed
+
+- **"New Search" → "New Transcript"** — renamed button title and label in `ReconstructedPanel` and `SummaryPanel`.
+- **Grid fix** — `grid-template-columns: 1fr 1fr` → `minmax(0, 1fr) minmax(0, 1fr)` in `.action-buttons` to prevent button overflow.
+
+---
+
 ## [2026-05-18] — Summarize endpoint + prompt v3.0
 
 ### Added
