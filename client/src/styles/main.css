@@ -350,6 +350,10 @@ body {
     justify-content: center;
   }
 
+  .action-buttons {
+    grid-template-columns: 1fr;
+  }
+
   .video-info h2 {
     font-size: 1rem;
   }
@@ -392,7 +396,6 @@ body {
   justify-content: center;
   gap: 0.6rem;
   width: 100%;
-  margin-bottom: 1.25rem;
   padding: 1rem 1.5rem;
   background: linear-gradient(135deg, #6366f1, #8b5cf6);
   border: none;
@@ -425,6 +428,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 0.6rem;
+  width: 100%;
   padding: 1rem 1.5rem;
   background: linear-gradient(135deg, #0ea5e9, #06b6d4);
   border: none;
