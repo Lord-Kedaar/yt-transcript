@@ -2,6 +2,20 @@
 
 All notable changes to this project are documented here.
 
+## [2026-05-19] — LLM prompt echo + markdown cleanup in summaries
+
+### Fixed
+
+- **LLM echo prompt in summary output** — model reproduced fragments of the system prompt as bullets. Shortened system prompt from 17 lines to 7 lines and moved format constraints (`"each bullet starts with - "`) to `userPrompt` tail for stronger anchoring.
+- **Markdown bold leaking into UI** — model wrapped bullet titles in `**text**`. Added prompt rule `"Do NOT use markdown bold (**) or headers"`.
+- **Defensive frontend strip** — `SummaryPanel.jsx` now strips `**bold**` and `## headers` via regex post-processing as safety net.
+
+### Changed
+
+- Summarize prompt structure: system → short role definition, userPrompt → raw text + explicit format tail.
+
+---
+
 ## [2026-05-19] — Single-port deployment: Express serves SPA + API on :4000
 
 ### Changed

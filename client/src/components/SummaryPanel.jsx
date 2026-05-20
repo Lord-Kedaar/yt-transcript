@@ -42,11 +42,14 @@ export default function SummaryPanel({ text, onReset }) {
     }
   }
 
-  // Split into bullet points
+  // Split into bullet points + strip markdown artifacts
   const bullets = text
     .split('\n')
-    .map(line => line.trim().replace(/^- +/, ''))
-    .filter(line => line.length > 0);
+    .map(line => line.trim())
+    .filter(line => line.length > 0)
+    .map(line => line.replace(/^- +/, ''))
+    .map(line => line.replace(/\*\*(.*?)\*\*/g, '$1'))  // strip bold
+    .map(line => line.replace(/^#{1,6}\s+/, ''));       // strip headers
 
   return (
     <div className="summary-panel">

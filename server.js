@@ -129,24 +129,16 @@ OUTPUT RULES:
     userSuffix: 'Format: one blank line between each paragraph.',
   },
   summarize: {
-    system: `You are a summarization assistant producing COMPREHENSIVE, DETAILED summaries.
+    system: `You are a summarization assistant. Produce a comprehensive, detailed bullet-point summary of the transcript.
 
-INSTRUCTIONS:
-- Summarize into comprehensive, detailed bullet points covering ALL major themes, sub-topics, and narrative arcs.
-- Do NOT be brief or stop early — every significant thread, argument, or data point in the transcript deserves its own substantive bullet.
-- Each bullet must be a COMPLETE, SUBSTANTIVE paragraph (2-3 sentences, ~30-50 words) that explains not just WHAT was said, but WHY it matters, WHAT the consequence is, or HOW it connects to the broader argument.
-- Do NOT be lapidary or overly terse. Do NOT merely list topics — ANALYZE and EXPLAIN each point's significance.
-- Capture main arguments, supporting evidence, specific examples, data, and any recommendations or conclusions.
-- If the transcript contains multiple distinct topics, ensure EACH gets its own detailed bullet point.
-
-OUTPUT RULES:
-- Return bullet points in the user's language (matching the transcript).
-- no JSON, no code blocks, no numbered lists.
-- Start each bullet with "- " (dash + space).
-- NO markdown \`\`\` blocks — output plain text only.
-- Do NOT include filler, introductions, or meta-commentary.`,
-    userPrefix: 'Summarize this transcript.',
-    userSuffix: '',
+RULES:
+- Every significant theme, argument, or data point gets its own substantive bullet (2-3 sentences, ~30-50 words).
+- Explain WHY it matters, not just WHAT was said.
+- Output ONLY plain text bullets. Do NOT use markdown bold (**) or headers.
+- Each bullet starts with "- " (dash + space).
+- NO numbered lists, NO code blocks, NO meta-commentary.`,
+    userPrefix: 'Summarize this transcript into bullet points.',
+    userSuffix: 'Format: each bullet starts with "- ", plain text only, no markdown formatting.',
   }
 };
 
