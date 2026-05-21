@@ -24,6 +24,7 @@
 - **PDF export double `.wav` extension** — `/api/audio/:id` route now strips duplicate `.wav` from `req.params.id`.
 - **TTS generation timeout** — `generateTTS()` now kills Piper process after 120s if it hangs, returning HTTP 500 with clear error.
 - **TTS cache accumulation** — server startup cleans WAV files older than 24h from `/tmp/tts-cache/`.
+- **TTS markdown stripping** — `/api/tts` strips `**`, `*`, `- `, `> `, `## ` before sending to Piper, preventing literal "star" pronunciation.
 
 ## v3.1 — 2026-05-21
 

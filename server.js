@@ -377,6 +377,18 @@ function detectLanguage(text = '') {
   return 'en'; // default fallback
 }
 
+// Strip markdown markers so TTS reads plain text, not literal stars
+function stripMarkdownForTTS(text) {
+  return String(text)
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/\*(.*?)\*/g, '$1')
+    .replace(/^\s*[-*]\s+/gm, '')
+    .replace(/^\s*>\s+/gm, '')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\*{2,}/g, '')
+    .trim();
+}
+
 // TTS Utility: generate WAV via Piper
 function generateTTS(text, lang, outPath) {
   return new Promise((resolve, reject) => {
@@ -435,7 +447,7 @@ app.post('/api/tts', async (req, res) => {
 
     const id = `${detectedLang}-${crypto.randomBytes(8).toString('hex')}`;
     const outPath = path.join(ttsCacheDir, `${id}.wav`);
-    await generateTTS(text.trim(), detectedLang, outPath);
+    await generateTTS(stripMarkdownForTTS(text), detectedLang, outPath);
 
     res.json({ audioUrl: `/api/audio/${id}.wav`, lang: detectedLang });
   } catch (err) {
