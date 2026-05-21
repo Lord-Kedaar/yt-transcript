@@ -1,6 +1,19 @@
 # Changelog
 
-## [2026-05-21] — Summary intro paragraph + markdown emphasis + multi-format save
+## [2026-05-21] — Revert to bielik-11b-v3.0-mlx + aggressive Polish enforcement + PDF filename fix + adaptive intro
+
+### Changed
+
+- **Model:** `qwen3.5-9b-mlx-lm-nvfp4` → `bielik-11b-v3.0-mlx` (better Polish prose quality, despite lower prompt obedience).
+- **Prompts now aggressively enforce Polish** — `userSuffix` contains `CRITICAL: ALL content must be in Polish. NEVER write in English.` in both reconstruct and summarize.
+- **Summary intro adapted for Bielik** — Bielik produces intro as first bullet instead of plain paragraph. `SummaryPanel` now treats first bullet as intro when no plain intro exists (`firstBulletIdx === 0`).
+- **PDF export filename fixed** — `pdf.save()` replaced with `pdf.output('blob')` + manual `<a download>` link to ensure `summary.pdf` / `reconstructed.pdf` filenames in Safari.
+- **SummaryPanel conditional bullets** — hides `<ul>` when no bullets remain after extracting intro.
+
+### Fixed
+
+- **PDF saved as `export.pdf`** — Safari ignored `pdf.save(filename)`. Now uses blob + download link.
+- **Inconsistent intro rendering** — handles both Bielik-style (first bullet = intro) and Qwen-style (plain intro paragraph).
 
 ### Added
 
