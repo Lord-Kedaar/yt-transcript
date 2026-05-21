@@ -1,5 +1,22 @@
 # Changelog
 
+## [2026-05-21] — Model swap to qwen3.5-9b-mlx-lm-nvfp4 + markdown rendering + Polish enforcement
+
+### Changed
+
+- **Model:** `bielik-11b-v3.0-mlx` → `qwen3.5-9b-mlx-lm-nvfp4` (faster, cleaner output, better prompt obedience).
+- **Prompts now allow markdown** — system prompt encourages `**bold**` and `*italic*` for emphasis.
+- **SummaryPanel renders markdown inline** — `parseInlineMarkdown()` converts `**text**` → `<strong>`, `*text*` → `<em>`.
+- **Smaller button fonts** — `.reconstruct-button` / `.summarize-button` reduced from `0.875rem` → `0.8rem`, mobile breakpoint `0.85rem` → `0.75rem`.
+- **Stronger Polish translation enforcement** — `summarize` system prompt now explicitly states `ALL output MUST be in Polish`. Reconstruct adds tail instruction `Write the entire reconstructed text in Polish` when translate mode is active.
+
+### Fixed
+
+- **Inconsistent Polish output from bielik** — qwen translates reliably in both reconstruct and summarize modes.
+- **Markdown bold appearing as plain text** — now rendered as styled `<strong>` / `<em>` in the UI.
+
+---
+
 All notable changes to this project are documented here.
 
 ## [2026-05-19] — LLM prompt echo + markdown cleanup in summaries

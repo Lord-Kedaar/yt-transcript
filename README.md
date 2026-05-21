@@ -7,8 +7,8 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 1. **Paste a YouTube URL** → the backend fetches available captions via `youtube-transcript-plus`.
 2. **Review raw segments** → timestamped transcript panels with hover/click highlighting.
 3. **AI Reconstruct** → sends the fragmented snippets to LM Studio which merges broken-up sentences back into readable paragraphs.
-4. **AI Summarize** → generates comprehensive, detailed bullet-point summaries covering all major themes.
-5. **Export** → download as TXT or SRT subtitle files.
+4. **AI Summarize** — generates comprehensive, detailed bullet-point summaries covering all major themes with **styled markdown** (bold / italic emphasis rendered natively).
+5. **Export** — download as TXT or SRT subtitle files.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 ┌─────────────────┐         ┌──────────────────┐         ┌───────────────┐
 │  Browser        │ HTTP    │  Express Server  │ TCP     │  LM Studio    │
 │  React + Vite   │  ◄──►   │  Port 4000       │  ───►   │  Port 1234    │
-│  (SPA served    │         │  Serves client/  │         │  bielik-11b    │
+│  (SPA served    │         │  Serves client/  │         │  bielik-11b / qwen3.5-9b  │
 │   by Express)   │         │  dist/ + API     │         │                │
 └─────────────────┘         └──────────────────┘         └───────────────┘
                                 │
@@ -28,7 +28,7 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 |---|---|---|
 | Frontend | React 18 + Vite 5 (build → static assets), dark theme CSS |
 | Backend | Node.js + Express 4, `youtube-transcript-plus` npm package |
-| LLM | LM Studio local server (`localhost:1234`), configurable model via `.env` (default: `bielik-11b-v3.0-mlx`) |
+| LLM | LM Studio local server (`localhost:1234`), configurable model via `.env` (default: `qwen3.5-9b-mlx-lm-nvfp4`) |
 | Cache | In-memory Map with TTL |
 | Launch | `manage.sh` (nohup-based start/stop/restart/status) or `start.sh` (foreground dev) |
 
