@@ -42,14 +42,54 @@ export default function SummaryPanel({ text, onReset }) {
     }
   }
 
-  // Split into bullet points + strip markdown artifacts
+  // Parse inline markdown: **bold** and *italic*
+  function parseInlineMarkdown(str) {
+    const parts = [];
+    let idx = 0;
+    while (idx < str.length) {
+      const boldStart = str.indexOf('**', idx);
+      const italicStart = str.indexOf('*', idx);
+      const nextSpecial = Math.min(
+        boldStart !== -1 ? boldStart : Infinity,
+        italicStart !== -1 ? italicStart : Infinity
+      );
+      if (nextSpecial === Infinity) {
+        if (idx < str.length) parts.push(str.slice(idx));
+        break;
+      }
+      // text before
+      if (nextSpecial > idx) {
+        parts.push(str.slice(idx, nextSpecial));
+      }
+      if (nextSpecial === boldStart) {
+        const boldEnd = str.indexOf('**', boldStart + 2);
+        if (boldEnd !== -1) {
+          parts.push(<strong key={idx}>{str.slice(boldStart + 2, boldEnd)}</strong>);
+          idx = boldEnd + 2;
+          continue;
+        }
+      }
+      if (nextSpecial === italicStart) {
+        const italicEnd = str.indexOf('*', italicStart + 1);
+        if (italicEnd !== -1) {
+          parts.push(<em key={idx}>{str.slice(italicStart + 1, italicEnd)}</em>);
+          idx = italicEnd + 1;
+          continue;
+        }
+      }
+      // fallback: push the char and move on
+      parts.push(str[nextSpecial]);
+      idx = nextSpecial + 1;
+    }
+    return parts;
+  }
+
+  // Split into bullet points — keep markdown, strip leading dash, render inline styles
   const bullets = text
     .split('\n')
     .map(line => line.trim())
     .filter(line => line.length > 0)
-    .map(line => line.replace(/^- +/, ''))
-    .map(line => line.replace(/\*\*(.*?)\*\*/g, '$1'))  // strip bold
-    .map(line => line.replace(/^#{1,6}\s+/, ''));       // strip headers
+    .map(line => line.replace(/^- +/, ''));
 
   return (
     <div className="summary-panel">
@@ -96,7 +136,7 @@ export default function SummaryPanel({ text, onReset }) {
       <div className="summary-content">
         <ul>
           {bullets.map((b, i) => (
-            <li key={i}>{b}</li>
+            <li key={i}>{parseInlineMarkdown(b)}</li>
           ))}
         </ul>
       </div>

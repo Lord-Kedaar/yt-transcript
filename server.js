@@ -9,7 +9,7 @@ const app = express();
 // A. Config from env (with defaults)
 const PORT = process.env.PORT || 4000;
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://localhost:1234';
-const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL || 'bielik-11b-v3.0-mlx';
+const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL || 'qwen3.5-9b-mlx-lm-nvfp4';
 const CACHE_TTL_MS = (parseInt(process.env.CACHE_TTL_MINUTES) || 60) * 60 * 1000;
 
 app.use(cors({ origin: '*' }));
@@ -134,11 +134,12 @@ OUTPUT RULES:
 RULES:
 - Every significant theme, argument, or data point gets its own substantive bullet (2-3 sentences, ~30-50 words).
 - Explain WHY it matters, not just WHAT was said.
-- Output ONLY plain text bullets. Do NOT use markdown bold (**) or headers.
+- Use markdown inline formatting (**bold** for emphasis, *italic* for terms) where it improves readability.
 - Each bullet starts with "- " (dash + space).
-- NO numbered lists, NO code blocks, NO meta-commentary.`,
+- NO numbered lists, NO code blocks, NO meta-commentary.
+- ALL output MUST be in Polish (język polski). Translate everything into Polish.`,
     userPrefix: 'Summarize this transcript into bullet points.',
-    userSuffix: 'Format: each bullet starts with "- ", plain text only, no markdown formatting.',
+    userSuffix: 'Format: each bullet starts with "- ", use **bold** and *italic* for emphasis where helpful. Write in Polish (język polski).',
   }
 };
 
@@ -194,9 +195,9 @@ app.post('/api/transform', async (req, res) => {
   let systemPrompt = promptDef.system;
   if (translate) {
     if (type === 'reconstruct') {
-      systemPrompt += `\n\nTRANSLATION:\n- Translate the entire reconstructed text into Polish (język polski).\n- Keep the paragraph structure and ALL meaning intact.\n- Translate all content — do NOT leave any part in the original language.`;
+      systemPrompt += `\n\nTRANSLATION:\n- EVERYTHING must be in Polish (język polski).\n- This includes headers, emphasis, and all content.\n- Keep the paragraph structure and ALL meaning intact.\n- Translate all content — do NOT leave any part in the original language.`;
     } else {
-      systemPrompt += `\n\nTRANSLATION:\n- Translate the entire summary into Polish (język polski).\n- Each bullet point must be written in Polish.\n- Preserve ALL meaning, facts, and nuances — do NOT summarize further during translation.\n- Translate all content — do NOT leave any part in the original language.`;
+      systemPrompt += `\n\nTRANSLATION:\n- EVERYTHING must be in Polish (język polski).\n- This includes headers, emphasis, and all content.\n- Each bullet point must be written in Polish.\n- Preserve ALL meaning, facts, and nuances — do NOT summarize further during translation.\n- Translate all content — do NOT leave any part in the original language.`;
     }
   }
 
@@ -205,6 +206,9 @@ app.post('/api/transform', async (req, res) => {
   userPrompt += `\n\n${rawText}`;
   if (promptDef.userSuffix) {
     userPrompt += `\n\n${promptDef.userSuffix}`;
+  }
+  if (translate && type === 'reconstruct') {
+    userPrompt += '\n\nWrite the entire reconstructed text in Polish (język polski). Translate every sentence into Polish.';
   }
 
   try {

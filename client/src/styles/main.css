@@ -389,7 +389,7 @@ body {
 
   .reconstruct-button,
   .summarize-button {
-    font-size: 0.85rem;
+    font-size: 0.75rem;
     white-space: nowrap;
     min-width: 0;
     overflow: hidden;
@@ -443,7 +443,7 @@ body {
   border: none;
   border-radius: var(--radius-md);
   color: white;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   transition: background var(--transition-fast), transform var(--transition-fast);
@@ -477,7 +477,7 @@ body {
   border: none;
   border-radius: var(--radius-md);
   color: white;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   transition: background var(--transition-fast), transform var(--transition-fast);
