@@ -26,6 +26,7 @@
 - **TTS cache accumulation** — server startup cleans WAV files older than 24h from `/tmp/tts-cache/`.
 - **Dead code** — removed `clearCache()` (server.js, never called), unused `useEffect` import (UrlInput.jsx), and unused `stop()` method (useTTS hook, never invoked).
 - **Dead CSS** — removed `.auto-badge`, `.reset-button`, and `.reset-panel-button` rules (orphaned classes from earlier UI iterations, no longer referenced in JSX).
+- **`/api/health` buildVersion null** — root cause: `/api/health` endpoint was not reading `build-version.json` at all (`buildVersion` was hardcoded `null`); `DIST_DIR`/`BUILD_VERSION_FILE` declarations were later in file and also duplicated. Fixed by hoisting path constants to top of file and adding read of `build-version.version` to `/api/health`.
 - **Summarize always Polish** — base `summarize` system prompt hardcoded `"ALL output MUST be in Polish"` regardless of mode; `userSuffix` translate instruction was only injected for `reconstruct`, never for `summarize`. Fixed by removing hardcoded Polish from base prompt and applying translate `userSuffix` to both `reconstruct` and `summarize`.
 - **Modal text incorrect for summarize** — language choice modal always displayed `"Reconstruct in the language of the transcript"` even when user clicked "Summarize with AI". Fixed by switching to dynamic text based on `modalAction`.
 

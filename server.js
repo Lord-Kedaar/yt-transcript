@@ -11,6 +11,11 @@ import { fileURLToPath } from 'url';
 
 const app = express();
 
+// Config paths (needed early for build version in /api/health)
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DIST_DIR = path.join(__dirname, 'client/dist');
+const BUILD_VERSION_FILE = path.join(DIST_DIR, 'build-version.json');
+
 // A. Config from env (with defaults)
 const PORT = process.env.PORT || 4000;
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://localhost:1234';
@@ -199,7 +204,14 @@ async function reconstructWithChunks(snippets, mode) {
 
 app.get('/api/health', async (req, res) => {
   const lmStatus = await checkLMStudio();
-  res.json({ status: 'ok', lmStudio: lmStatus.ok ? 'connected' : 'unreachable', model: LM_STUDIO_MODEL });
+  let buildVersion = null;
+  if (fs.existsSync(BUILD_VERSION_FILE)) {
+    try {
+      const raw = fs.readFileSync(BUILD_VERSION_FILE, 'utf-8');
+      buildVersion = JSON.parse(raw).version || null;
+    } catch { /* ignore */ }
+  }
+  res.json({ status: 'ok', lmStudio: lmStatus.ok ? 'connected' : 'unreachable', model: LM_STUDIO_MODEL, buildVersion });
 });
 
 app.get('/api/transcript', async (req, res) => {
@@ -350,9 +362,6 @@ app.get('/api/lm-status', async (req, res) => {
 });
 
 // Static file serving for production
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DIST_DIR = path.join(__dirname, 'client/dist');
-const BUILD_VERSION_FILE = path.join(DIST_DIR, 'build-version.json');
 
 function setNoCacheHeaders(res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
