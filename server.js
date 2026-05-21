@@ -3,6 +3,9 @@ import express from 'express';
 import cors from 'cors';
 import { fetchTranscript } from 'youtube-transcript-plus';
 import he from 'he';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const app = express();
 
@@ -284,11 +287,30 @@ app.get('/api/lm-status', async (req, res) => {
 });
 
 // Static file serving for production
-import path from 'path';
-import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-app.use(express.static(path.join(__dirname, 'client/dist')));
-app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'client/dist/index.html')));
+const DIST_DIR = path.join(__dirname, 'client/dist');
+const BUILD_VERSION_FILE = path.join(DIST_DIR, 'build-version.json');
+
+function setNoCacheHeaders(res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+}
+
+app.get('/api/build-version', (req, res) => {
+  setNoCacheHeaders(res);
+  if (fs.existsSync(BUILD_VERSION_FILE)) {
+    return res.sendFile(BUILD_VERSION_FILE);
+  }
+  return res.status(404).json({ error: 'Build version file not found. Run npm run build.' });
+});
+
+app.use(express.static(DIST_DIR, { setHeaders: setNoCacheHeaders }));
+app.get('*', (req, res) => {
+  setNoCacheHeaders(res);
+  res.sendFile(path.join(DIST_DIR, 'index.html'));
+});
 
 const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`\n  yt-transcript API + SPA running`);
