@@ -63,6 +63,13 @@ Access the app at **http://localhost:4000**.
 
 > `npm run dev`, `npm run dev:client`, and `start-frontend.sh` intentionally do **not** start Vite. Port `:3000` is disabled to prevent stale Vite/HMR output diverging from the production `:4000` build.
 
+### Tests
+
+```bash
+# Run all regression tests (summary parser + block-level PDF pagination)
+cd client && npm test
+```
+
 ### Endpoints
 
 | Method | Path | Description |
@@ -144,6 +151,7 @@ yt-transcript/
     ├── package.json
     ├── scripts/
     │   ├── dev-disabled.mjs          # Blocks accidental Vite dev server usage
+    │   ├── test-runner.mjs             # Runs all regression tests (pdf-pagination + summary-parser)
     │   ├── test-summary-parser.mjs   # Regression tests for Bielik summary parsing
     │   └── test-pdf-pagination.mjs   # Regression tests for block-level PDF pagination
     └── src/
