@@ -42,7 +42,7 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 ### Install & Run
 
 ```bash
-cd /Users/radek/yt-transcript
+cd /Users/radek/Documents/Projects/yt-transcript
 
 # Install dependencies
 npm install          # root (Express server)

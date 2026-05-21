@@ -6,7 +6,7 @@
 lsof -ti:4000 | xargs kill -9 2>/dev/null
 lsof -ti:3000 | xargs kill -9 2>/dev/null  # clean stale Vite
 
-cd /Users/radek/yt-transcript
+cd /Users/radek/Documents/Projects/yt-transcript
 
 # Ensure dist is built
 echo "Building frontend..."

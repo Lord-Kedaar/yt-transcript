@@ -2,7 +2,7 @@
 
 # ytTranscript Service Manager — single-port: Express on :4000 serves SPA + API
 
-PROJECT_DIR="/Users/radek/yt-transcript"
+PROJECT_DIR="/Users/radek/Documents/Projects/yt-transcript"
 LOG_DIR="$PROJECT_DIR/logs"
 PIDFILE="$LOG_DIR/.pids"
 
