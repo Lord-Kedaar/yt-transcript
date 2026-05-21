@@ -126,12 +126,14 @@ OUTPUT RULES:
 - Do NOT include any meta-commentary like "Paragraph 1" or "Self-correction"
 - NO markdown \`\`\` blocks — output plain text only`,
     userPrefix: 'Reconstruct this transcript into readable paragraphs. Keep every word exactly as-is.',
-    userSuffix: 'Format: one blank line between each paragraph.',
+    userSuffix: 'Format: one blank line between each paragraph.\n\nIf the transcript contains speaker names, identify the main speaker(s) and begin with a brief 1-2 sentence introduction (author/topic of the video). Then continue with the full reconstructed text.',
   },
   summarize: {
     system: `You are a summarization assistant. Produce a comprehensive, detailed bullet-point summary of the transcript.
 
 RULES:
+- Begin with ONE introductory paragraph (3-5 sentences) identifying the speaker/author and what the video is about, based solely on the transcript.
+- After the introduction, provide a comprehensive bullet-point summary covering ALL major themes.
 - Every significant theme, argument, or data point gets its own substantive bullet (2-3 sentences, ~30-50 words).
 - Explain WHY it matters, not just WHAT was said.
 - Use markdown inline formatting (**bold** for emphasis, *italic* for terms) where it improves readability.
@@ -160,7 +162,7 @@ const REASONING_STRIP_PATTERNS = [
 ];
 
 app.post('/api/transform', async (req, res) => {
-  const { snippets, type, mode } = req.body;
+  const { snippets, type, mode, title } = req.body;
   const translate = mode === 'translate';
 
   if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {

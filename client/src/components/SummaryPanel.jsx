@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
-export default function SummaryPanel({ text, onReset }) {
+export default function SummaryPanel({ text }) {
   const [copied, setCopied] = useState(false);
+  const [showSaveMenu, setShowSaveMenu] = useState(false);
+  const saveMenuRef = useRef(null);
 
-  function handleSave() {
-    const blob = new Blob([text], { type: 'text/plain' });
+  function downloadTxt() {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -13,6 +17,46 @@ export default function SummaryPanel({ text, onReset }) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setShowSaveMenu(false);
+  }
+
+  function downloadMd() {
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'summary.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setShowSaveMenu(false);
+  }
+
+  async function downloadPdf() {
+    const el = saveMenuRef.current?.closest('.summary-panel')?.querySelector('.summary-content');
+    if (!el) return;
+    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#0f172a' });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = 210;
+    const margin = 15;
+    const imgWidth = pageWidth - margin * 2;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 20;
+    pdf.setFontSize(16);
+    pdf.text('Summary', pageWidth / 2, 12, { align: 'center' });
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+    heightLeft -= (297 - position - margin);
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight + 20;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+      heightLeft -= (297 - margin);
+    }
+    pdf.save('summary.pdf');
+    setShowSaveMenu(false);
   }
 
   function handleCopy() {
@@ -84,12 +128,14 @@ export default function SummaryPanel({ text, onReset }) {
     return parts;
   }
 
-  // Split into bullet points — keep markdown, strip leading dash, render inline styles
-  const bullets = text
-    .split('\n')
-    .map(line => line.trim())
-    .filter(line => line.length > 0)
-    .map(line => line.replace(/^- +/, ''));
+  // Split text: intro (everything before first bullet) + bullets
+  const allLines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+  const firstBulletIdx = allLines.findIndex(line => line.startsWith('- '));
+
+  const introLines = firstBulletIdx > 0 ? allLines.slice(0, firstBulletIdx) : [];
+  const bulletLines = firstBulletIdx >= 0 ? allLines.slice(firstBulletIdx).map(line => line.replace(/^- +/, '')) : allLines;
+
+  const introText = introLines.join(' ');
 
   return (
     <div className="summary-panel">
@@ -122,27 +168,39 @@ export default function SummaryPanel({ text, onReset }) {
             </>
           )}
         </button>
-        <button className="save-button" onClick={handleSave}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-            <polyline points="17 21 17 13 7 13 7 21"/>
-            <polyline points="7 3 7 8 15 8"/>
-          </svg>
-          Save
-        </button>
+        <div className="save-menu-wrapper" ref={saveMenuRef}>
+          <button className="save-button" onClick={() => setShowSaveMenu(!showSaveMenu)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Save
+          </button>
+          {showSaveMenu && (
+            <div className="save-menu-dropdown">
+              <button onClick={downloadTxt}>💾 TXT</button>
+              <button onClick={downloadMd}>📝 MD</button>
+              <button onClick={downloadPdf}>📄 PDF</button>
+            </div>
+          )}
+        </div>
 
       </div>
 
       <div className="summary-content">
+        {introText && (
+          <div className="summary-intro">{parseInlineMarkdown(introText)}</div>
+        )}
         <ul>
-          {bullets.map((b, i) => (
+          {bulletLines.map((b, i) => (
             <li key={i}>{parseInlineMarkdown(b)}</li>
           ))}
         </ul>
       </div>
 
       <div className="panel-footer">
-        <span>{bullets.length} bullet points</span>
+        <span>{bulletLines.length} bullet points</span>
         <span>{text.length.toLocaleString()} characters</span>
       </div>
     </div>

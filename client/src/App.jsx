@@ -102,6 +102,7 @@ export default function App() {
           snippets: transcriptData.snippets,
           type,
           mode,
+          title: transcriptData?.title || '',
         }),
         signal: controller.signal,
       });

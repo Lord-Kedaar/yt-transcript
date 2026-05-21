@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
-export default function ReconstructedPanel({ text, onReset }) {
+export default function ReconstructedPanel({ text }) {
   const [copied, setCopied] = useState(false);
+  const [showSaveMenu, setShowSaveMenu] = useState(false);
+  const saveMenuRef = useRef(null);
 
-  function handleSave() {
-    const blob = new Blob([text], { type: 'text/plain' });
+  function downloadTxt() {
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -13,6 +17,46 @@ export default function ReconstructedPanel({ text, onReset }) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    setShowSaveMenu(false);
+  }
+
+  function downloadMd() {
+    const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'reconstructed.md';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    setShowSaveMenu(false);
+  }
+
+  async function downloadPdf() {
+    const el = saveMenuRef.current?.closest('.reconstructed-panel')?.querySelector('.reconstructed-content');
+    if (!el) return;
+    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#0f172a' });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = 210;
+    const margin = 15;
+    const imgWidth = pageWidth - margin * 2;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 20;
+    pdf.setFontSize(16);
+    pdf.text('Reconstructed Transcript', pageWidth / 2, 12, { align: 'center' });
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+    heightLeft -= (297 - position - margin);
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight + 20;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+      heightLeft -= (297 - margin);
+    }
+    pdf.save('reconstructed.pdf');
+    setShowSaveMenu(false);
   }
 
   function handleCopy() {
@@ -72,14 +116,23 @@ export default function ReconstructedPanel({ text, onReset }) {
             </>
           )}
         </button>
-        <button className="save-button" onClick={handleSave}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-            <polyline points="17 21 17 13 7 13 7 21"/>
-            <polyline points="7 3 7 8 15 8"/>
-          </svg>
-          Save
-        </button>
+        <div className="save-menu-wrapper" ref={saveMenuRef}>
+          <button className="save-button" onClick={() => setShowSaveMenu(!showSaveMenu)}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+              <polyline points="17 21 17 13 7 13 7 21"/>
+              <polyline points="7 3 7 8 15 8"/>
+            </svg>
+            Save
+          </button>
+          {showSaveMenu && (
+            <div className="save-menu-dropdown">
+              <button onClick={downloadTxt}>💾 TXT</button>
+              <button onClick={downloadMd}>📝 MD</button>
+              <button onClick={downloadPdf}>📄 PDF</button>
+            </div>
+          )}
+        </div>
 
       </div>
 
