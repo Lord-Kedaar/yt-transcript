@@ -55,7 +55,16 @@ export default function ReconstructedPanel({ text }) {
       pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
       heightLeft -= (297 - margin);
     }
-    pdf.save('reconstructed.pdf');
+    // Blob + manual download instead of pdf.save() to ensure filename
+    const pdfBlob = pdf.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = pdfUrl;
+    a.download = 'reconstructed.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(pdfUrl);
     setShowSaveMenu(false);
   }
 

@@ -55,7 +55,16 @@ export default function SummaryPanel({ text }) {
       pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
       heightLeft -= (297 - margin);
     }
-    pdf.save('summary.pdf');
+    // Blob + manual download instead of pdf.save() to ensure filename
+    const pdfBlob = pdf.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = pdfUrl;
+    a.download = 'summary.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(pdfUrl);
     setShowSaveMenu(false);
   }
 
@@ -128,14 +137,28 @@ export default function SummaryPanel({ text }) {
     return parts;
   }
 
-  // Split text: intro (everything before first bullet) + bullets
+  // Split text: intro (first bullet or plain text before bullets) + remaining bullets
   const allLines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
   const firstBulletIdx = allLines.findIndex(line => line.startsWith('- '));
 
-  const introLines = firstBulletIdx > 0 ? allLines.slice(0, firstBulletIdx) : [];
-  const bulletLines = firstBulletIdx >= 0 ? allLines.slice(firstBulletIdx).map(line => line.replace(/^- +/, '')) : allLines;
+  let introLines, bulletLines;
+  if (firstBulletIdx > 0) {
+    // Has plain intro before first bullet
+    introLines = allLines.slice(0, firstBulletIdx);
+    bulletLines = allLines.slice(firstBulletIdx).map(line => line.replace(/^- +/, ''));
+  } else if (firstBulletIdx === 0) {
+    // No plain intro — treat the FIRST bullet as the intro
+    const first = allLines[0].replace(/^- +/, '');
+    introLines = [first];
+    bulletLines = allLines.slice(1).map(line => line.replace(/^- +/, ''));
+  } else {
+    // No bullets at all
+    introLines = allLines;
+    bulletLines = [];
+  }
 
   const introText = introLines.join(' ');
+  const hasBullets = bulletLines.length > 0;
 
   return (
     <div className="summary-panel">
@@ -192,15 +215,17 @@ export default function SummaryPanel({ text }) {
         {introText && (
           <div className="summary-intro">{parseInlineMarkdown(introText)}</div>
         )}
-        <ul>
-          {bulletLines.map((b, i) => (
-            <li key={i}>{parseInlineMarkdown(b)}</li>
-          ))}
-        </ul>
+        {hasBullets && (
+          <ul>
+            {bulletLines.map((b, i) => (
+              <li key={i}>{parseInlineMarkdown(b)}</li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className="panel-footer">
-        <span>{bulletLines.length} bullet points</span>
+        <span>{hasBullets ? bulletLines.length + ' bullet points' : 'No bullets'}</span>
         <span>{text.length.toLocaleString()} characters</span>
       </div>
     </div>

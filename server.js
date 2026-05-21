@@ -9,7 +9,7 @@ const app = express();
 // A. Config from env (with defaults)
 const PORT = process.env.PORT || 4000;
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://localhost:1234';
-const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL || 'qwen3.5-9b-mlx-lm-nvfp4';
+const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL || 'bielik-11b-v3.0-mlx';
 const CACHE_TTL_MS = (parseInt(process.env.CACHE_TTL_MINUTES) || 60) * 60 * 1000;
 
 app.use(cors({ origin: '*' }));
@@ -132,8 +132,6 @@ OUTPUT RULES:
     system: `You are a summarization assistant. Produce a comprehensive, detailed bullet-point summary of the transcript.
 
 RULES:
-- Begin with ONE introductory paragraph (3-5 sentences) identifying the speaker/author and what the video is about, based solely on the transcript.
-- After the introduction, provide a comprehensive bullet-point summary covering ALL major themes.
 - Every significant theme, argument, or data point gets its own substantive bullet (2-3 sentences, ~30-50 words).
 - Explain WHY it matters, not just WHAT was said.
 - Use markdown inline formatting (**bold** for emphasis, *italic* for terms) where it improves readability.
@@ -141,7 +139,7 @@ RULES:
 - NO numbered lists, NO code blocks, NO meta-commentary.
 - ALL output MUST be in Polish (język polski). Translate everything into Polish.`,
     userPrefix: 'Summarize this transcript into bullet points.',
-    userSuffix: 'Format: each bullet starts with "- ", use **bold** and *italic* for emphasis where helpful. Write in Polish (język polski).',
+    userSuffix: 'STRUCTURE (follow this EXACTLY):\n\n1) First, write ONE paragraph (3-5 sentences) introducing: who is speaking / who is the author, and what is the main topic of this video. Write this as plain paragraphs — NO bullets here.\n\n2) Then, after a blank line, provide the detailed bullet-point summary.\n\nFormat: each bullet starts with "- ", use **bold** and *italic* for emphasis where helpful.\n\nWrite EVERYTHING in Polish (język polski). NEVER write in English or any other language.',
   }
 };
 
@@ -210,7 +208,7 @@ app.post('/api/transform', async (req, res) => {
     userPrompt += `\n\n${promptDef.userSuffix}`;
   }
   if (translate && type === 'reconstruct') {
-    userPrompt += '\n\nWrite the entire reconstructed text in Polish (język polski). Translate every sentence into Polish.';
+    userPrompt += '\n\nWrite the entire reconstructed text in Polish (język polski). Translate every sentence into Polish.\n\nCRITICAL: ALL content must be in Polish. Do NOT output in English or any other language.';
   }
 
   try {
