@@ -6,10 +6,11 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 
 1. **Paste a YouTube URL** → the backend fetches available captions via `youtube-transcript-plus`.
 2. **Review raw segments** → timestamped transcript panels with hover/click highlighting.
-3. **AI Reconstruct** → sends the fragmented snippets to LM Studio which merges broken-up sentences back into readable paragraphs. **Long transcripts are automatically chunked into ~150-snippet segments and processed sequentially**, then merged back into a full reconstruction.
-4. **AI Summarize** — generates structured sections with **bold headers** and paragraphs, covering all major themes with styled markdown emphasis (bold / italic) rendered natively.
-5. **Export** — download as TXT, MD, or paginated PDF. PDF export renders one white A4 page canvas per PDF page to avoid page-boundary clipping/duplication while preserving Polish glyphs. PDF now supports **inline markdown rendering** (bold, italic, lists, blockquotes).
-6. **TTS / Read Aloud** — click the 🔊 speaker icon next to Reconstructed Text or AI Summary to generate and play WAV audio via local **Piper TTS** (Polish voice installed).
+3. **Choose language mode** — before Reconstruct or Summarize, pick "Keep original language" or "Translate to Polish". This controls whether the LLM preserves the transcript's native language or translates output into Polish.
+4. **AI Reconstruct** → sends the fragmented snippets to LM Studio which merges broken-up sentences back into readable paragraphs. **Long transcripts are automatically chunked into ~150-snippet segments and processed sequentially**, then merged back into a full reconstruction.
+5. **AI Summarize** — generates structured sections with **bold headers** and paragraphs, covering all major themes with styled markdown emphasis (bold / italic) rendered natively.
+6. **Export** — download as TXT, MD, or paginated PDF. PDF export renders one white A4 page canvas per PDF page to avoid page-boundary clipping/duplication while preserving Polish glyphs. PDF now supports **inline markdown rendering** (bold, italic, lists, blockquotes).
+7. **TTS / Read Aloud** — click the 🔊 speaker icon next to Reconstructed Text or AI Summary to generate and play WAV audio via local **Piper TTS**. Three voices installed: Polish (`justyna`), English (`hfc_female`), German (`thorsten`). Auto-detects language from text; accepts explicit `lang` parameter.
 
 ## Architecture
 
@@ -66,7 +67,7 @@ Access the app at **http://localhost:4000**.
 
 | Method | Path | Description |
 |---|---|---|
-| GET | `/api/health` | Health check + LM Studio connection status |
+| GET | `/api/health` | Health check + LM Studio status + active model + frontend build version |
 | GET | `/api/lm-status` | LM Studio model list and load status |
 | GET | `/api/build-version` | Current frontend build timestamp/SHA served by Express |
 | GET | `/api/transcript?url=<youtube-url>` | Fetch captions for a video (cached) |
@@ -87,6 +88,16 @@ Access the app at **http://localhost:4000**.
 ```json
 {
   "reconstructed": "... paragraph-based reconstructed text ...",
+  "snippetCount": 150,
+  "chunkCount": 1,
+  "model": "bielik-11b-v3.0-mlx"
+}
+```
+
+**`/api/transform` response (summarize):**
+```json
+{
+  "summary": "... structured sections with bold headers and paragraphs ...",
   "snippetCount": 150,
   "chunkCount": 1,
   "model": "bielik-11b-v3.0-mlx"
@@ -120,34 +131,35 @@ Access the app at **http://localhost:4000**.
 
 ```
 yt-transcript/
-├── server.js                    # Express backend: transcript fetch + LM Studio proxy + static SPA serving
-├── manage.sh                    # nohup-based service manager (start/stop/restart/status)
-├── start.sh                     # Foreground launcher (kills old, builds, starts Express)
-├── start-frontend.sh            # Disabled: prints single-port workflow warning, does not start Vite :3000
-├── package.json                 # Root: Express + youtube-transcript deps
+├── .env.example                    # Template: LM_STUDIO_URL, LM_STUDIO_MODEL, PORT, CACHE_TTL_MINUTES
+├── server.js                       # Express backend: transcript fetch + LM Studio proxy + TTS + static SPA serving
+├── manage.sh                       # nohup-based service manager (start/stop/restart/status)
+├── start.sh                        # Foreground launcher (kills old, builds, starts Express)
+├── start-frontend.sh               # Disabled: prints single-port workflow warning, does not start Vite :3000
+├── package.json                    # Root: Express + youtube-transcript deps
 │
-└── client/                      # React frontend (Vite → build → dist/)
+└── client/                         # React frontend (Vite → build → dist/)
     ├── index.html
-    ├── vite.config.js           # Development only; production uses static build
+    ├── vite.config.js              # Development only; production uses static build
     ├── package.json
     ├── scripts/
     │   ├── dev-disabled.mjs          # Blocks accidental Vite dev server usage
     │   ├── test-summary-parser.mjs   # Regression tests for Bielik summary parsing
     │   └── test-pdf-pagination.mjs   # Regression tests for block-level PDF pagination
     └── src/
-        ├── api.js               # fetchTranscript, exportToTXT/SRT helpers
-        ├── buildInfo.js         # Stable BUILD_INFO accessor; Vite injects values from vite.config.js
-        ├── hooks/useTTS.js      # useTTS hook: generate audio via /api/tts and play via Audio()
-        ├── utils/summaryParser.js # Parses Bielik section formats into intro + sections
-        ├── utils/pdfExport.js   # Paginated PDF export: one white A4 canvas per page, markdown rendering
-        ├── App.jsx              # Main app: URL input → transcript → AI transform → export → TTS
+        ├── api.js                    # fetchTranscript, exportToTXT/SRT helpers
+        ├── buildInfo.js              # Stable BUILD_INFO accessor; Vite injects values from vite.config.js
+        ├── hooks/useTTS.js           # useTTS hook: generate audio via /api/tts and play via Audio()
+        ├── utils/summaryParser.js      # Parses Bielik section formats into intro + sections
+        ├── utils/pdfExport.js        # Paginated PDF export: one white A4 canvas per page, markdown rendering
+        ├── App.jsx                   # Main app: URL input → transcript → language modal → AI transform → export → TTS
         └── components/
-            ├── Header.jsx       # Logo + subtitle
-            ├── UrlInput.jsx     # URL text field + fetch button
-            ├── TranscriptPanel.jsx  # Timestamped segments with highlight
-            ├── ReconstructedPanel.jsx # AI-reconstructed text + TTS button + copy button
-            ├── SummaryPanel.jsx   # AI summary with markdown + TTS button + copy button
-            └── ExportButtons.jsx    # TXT / SRT download buttons
+            ├── Header.jsx            # Logo + subtitle
+            ├── UrlInput.jsx          # URL text field + fetch button
+            ├── TranscriptPanel.jsx     # Timestamped segments with highlight
+            ├── ReconstructedPanel.jsx  # AI-reconstructed text + TTS button + copy button
+            ├── SummaryPanel.jsx        # AI summary with markdown + TTS button + copy button
+            └── ExportButtons.jsx       # TXT / SRT download buttons
 ```
 
 ## Development vs Production
@@ -204,7 +216,7 @@ yt-transcript/
 
 | Problem | Likely cause | Fix |
 |---|---|---|
-| "No transcript found" on a video that has captions | `youtube-transcript` package is broken for this video | Switch to alternative library (see Known Issues above) |
+| "No transcript found" on a video that has captions | Some videos don't have auto-generated captions or restrict third-party access | Try a different YouTube URL; check if the video has manual captions |
 | "LM Studio returned an error" / 502 on transform | LM Studio not running or model unloaded | Start LM Studio, load desired model, retry |
 | "Could not connect to LM Studio" | Wrong URL or port | Check `LM_STUDIO_URL` in `.env`, verify `localhost:1234` |
 | Frontend doesn't load after code changes | Express serves stale `client/dist/` | Re-run `cd client && npm run build`, then refresh browser |

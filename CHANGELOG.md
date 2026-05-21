@@ -24,6 +24,7 @@
 - **PDF export double `.wav` extension** — `/api/audio/:id` route now strips duplicate `.wav` from `req.params.id`.
 - **TTS generation timeout** — `generateTTS()` now kills Piper process after 120s if it hangs, returning HTTP 500 with clear error.
 - **TTS cache accumulation** — server startup cleans WAV files older than 24h from `/tmp/tts-cache/`.
+- **README accuracy** — updated README to reflect current state: 3 TTS voices (PL/EN/DE), language choice modal flow, `/api/transform` summarize response example, `.env.example` and `scripts/` in project structure, stale "No transcript found" troubleshooting, `/api/health` buildVersion field. Fixed `summaryParser.js` description from "summary parsing" to "section formats".
 - **Dead code** — removed `clearCache()` (server.js, never called), unused `useEffect` import (UrlInput.jsx), and unused `stop()` method (useTTS hook, never invoked).
 - **Dead CSS** — removed `.auto-badge`, `.reset-button`, and `.reset-panel-button` rules (orphaned classes from earlier UI iterations, no longer referenced in JSX).
 - **`/api/health` buildVersion null** — root cause: `/api/health` endpoint was not reading `build-version.json` at all (`buildVersion` was hardcoded `null`); `DIST_DIR`/`BUILD_VERSION_FILE` declarations were later in file and also duplicated. Fixed by hoisting path constants to top of file and adding read of `build-version.version` to `/api/health`.
