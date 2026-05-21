@@ -19,4 +19,4 @@ client/node_modules/.cache/
 client/public/build-version.json
 
 # Backups
-*.backup-*
+*.backup-*logs/
