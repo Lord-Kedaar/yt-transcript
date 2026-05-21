@@ -1,5 +1,28 @@
 # Changelog
 
+## v3.2 — 2026-05-21
+
+### Added
+
+- **Text-to-Speech (TTS) via Piper** — backend endpoint `POST /api/tts` generates WAV audio via local Piper TTS engine; `GET /api/audio/:id` serves generated files. Polish female voice (Justyna) pre-installed; EN/DE require manual download.
+- **Read Aloud button** — speaker (🔊) icon in `ReconstructedPanel` and `SummaryPanel` headers; click generates and plays audio via `useTTS.js` hook. Auto-detects language from content or uses modal choice (`original`/`translate`).
+- **PDF markdown rendering** — `pdfExport.js` now renders inline markdown (`**bold**`, `*italic*`, `- ` lists, `> ` blockquotes) in PDF output via `html2canvas` innerHTML, not stripped plain text.
+- **Chunked Reconstruct for long transcripts** — transcripts with >150 snippets are automatically split into overlapping ~150-snippet chunks, each processed sequentially by LLM, then merged. Prevents truncation caused by model token limits.
+- **Piper integration** — `server.js` includes `PIPER_BIN` and `PIPER_MODELS_DIR` configuration; `TTS_VOICES` map supports `pl` (Justyna), placeholders for `en`/`de`.
+
+### Changed
+
+- **Reconstruct prompt** — removed the "introduce author/topic" instruction from userSuffix. System prompt now requires `Output the FULL reconstructed text from beginning to end; never truncate mid-sentence`. No intro paragraph.
+- **Prompt wrapping** — transcript text is wrapped in `=== TRANSCRIPT ===` / `=== END ===` markers so the model doesn't interpret userSuffix as part of the transcript.
+- **Response format** — `/api/transform` `reconstruct` now returns `chunkCount` field (number of chunks processed).
+- **`.gitignore`** — fixed broken pattern `*.backup-*logs/` → `*.backup-*` and `logs/` on separate lines.
+
+### Fixed
+
+- **Reconstruct truncation on long videos** — root cause was model 32K token limit exceeded by large input. Fixed with chunking.
+- **413 Payload Too Large** — `express.json()` limit increased to 50 MB. Included in v3.1.1 but also applicable here.
+- **PDF export double `.wav` extension** — `/api/audio/:id` route now strips duplicate `.wav` from `req.params.id`.
+
 ## v3.1 — 2026-05-21
 
 ### Added

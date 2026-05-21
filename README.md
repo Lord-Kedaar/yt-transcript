@@ -6,9 +6,10 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 
 1. **Paste a YouTube URL** → the backend fetches available captions via `youtube-transcript-plus`.
 2. **Review raw segments** → timestamped transcript panels with hover/click highlighting.
-3. **AI Reconstruct** → sends the fragmented snippets to LM Studio which merges broken-up sentences back into readable paragraphs.
+3. **AI Reconstruct** → sends the fragmented snippets to LM Studio which merges broken-up sentences back into readable paragraphs. **Long transcripts are automatically chunked into ~150-snippet segments and processed sequentially**, then merged back into a full reconstruction.
 4. **AI Summarize** — generates structured sections with **bold headers** and paragraphs, covering all major themes with styled markdown emphasis (bold / italic) rendered natively.
-5. **Export** — download as TXT, MD, or paginated PDF. PDF export renders one white A4 page canvas per PDF page to avoid page-boundary clipping/duplication while preserving Polish glyphs.
+5. **Export** — download as TXT, MD, or paginated PDF. PDF export renders one white A4 page canvas per PDF page to avoid page-boundary clipping/duplication while preserving Polish glyphs. PDF now supports **inline markdown rendering** (bold, italic, lists, blockquotes).
+6. **TTS / Read Aloud** — click the 🔊 speaker icon next to Reconstructed Text or AI Summary to generate and play WAV audio via local **Piper TTS** (Polish voice installed).
 
 ## Architecture
 
@@ -25,11 +26,12 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 ```
 
 | Layer | Stack |
-|---|---|
+|---|---|---|
 | Frontend | React 18 + Vite 5 (build → static assets), dark theme CSS |
 | Backend | Node.js + Express 4, `youtube-transcript-plus` npm package |
 | LLM     | LM Studio local server (`localhost:1234`), configurable model via `.env` (default: `bielik-11b-v3.0-mlx`) |
 | Cache | In-memory Map with TTL |
+| TTS | Piper local TTS engine (Polish voice `justyna` installed) |
 | Launch | `manage.sh` (nohup-based start/stop/restart/status); Vite dev on `:3000` is disabled |
 
 ## Quickstart
@@ -68,7 +70,9 @@ Access the app at **http://localhost:4000**.
 | GET | `/api/lm-status` | LM Studio model list and load status |
 | GET | `/api/build-version` | Current frontend build timestamp/SHA served by Express |
 | GET | `/api/transcript?url=<youtube-url>` | Fetch captions for a video (cached) |
-| POST | `/api/transform` | Reconstruct or summarize transcript snippets via local LLM |
+| POST | `/api/transform` | Reconstruct or summarize transcript snippets via local LLM. For `reconstruct` with `>150` snippets, auto-chunked into ~150-snippet batches |
+| POST | `/api/tts` | Generate WAV audio via local Piper TTS. Body: `{text, lang?}` |
+| GET | `/api/audio/:id` | Serve generated WAV file |
 
 **`/api/transform` request body:**
 ```json
@@ -79,11 +83,29 @@ Access the app at **http://localhost:4000**.
 }
 ```
 
-**`/api/transform` response:**
+**`/api/transform` response (reconstruct):**
 ```json
 {
-  "reconstructed": "..." // when type = "reconstruct"
-  // or "summary": "..." when type = "summarize"
+  "reconstructed": "... paragraph-based reconstructed text ...",
+  "snippetCount": 150,
+  "chunkCount": 1,
+  "model": "bielik-11b-v3.0-mlx"
+}
+```
+
+**`/api/tts` request body:**
+```json
+{
+  "text": "Your text to speak",
+  "lang": "pl"  // optional: "pl" | "en" | "de", autodetected if empty
+}
+```
+
+**`/api/tts` response:**
+```json
+{
+  "audioUrl": "/api/audio/pl-abc12345.wav",
+  "lang": "pl"
 }
 ```
 
@@ -115,14 +137,16 @@ yt-transcript/
     └── src/
         ├── api.js               # fetchTranscript, exportToTXT/SRT helpers
         ├── buildInfo.js         # Stable BUILD_INFO accessor; Vite injects values from vite.config.js
+        ├── hooks/useTTS.js      # useTTS hook: generate audio via /api/tts and play via Audio()
         ├── utils/summaryParser.js # Parses Bielik section formats into intro + sections
-        ├── utils/pdfExport.js   # Paginated PDF export: one white A4 canvas per page
-        ├── App.jsx              # Main app: URL input → transcript → AI transform → export
+        ├── utils/pdfExport.js   # Paginated PDF export: one white A4 canvas per page, markdown rendering
+        ├── App.jsx              # Main app: URL input → transcript → AI transform → export → TTS
         └── components/
             ├── Header.jsx       # Logo + subtitle
             ├── UrlInput.jsx     # URL text field + fetch button
             ├── TranscriptPanel.jsx  # Timestamped segments with highlight
-            ├── ReconstructedPanel.jsx # AI-reconstructed text + copy button
+            ├── ReconstructedPanel.jsx # AI-reconstructed text + TTS button + copy button
+            ├── SummaryPanel.jsx   # AI summary with markdown + TTS button + copy button
             └── ExportButtons.jsx    # TXT / SRT download buttons
 ```
 
