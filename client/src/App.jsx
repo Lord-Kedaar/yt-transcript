@@ -6,6 +6,7 @@ import TranscriptPanel from './components/TranscriptPanel';
 import ReconstructedPanel from './components/ReconstructedPanel';
 import SummaryPanel from './components/SummaryPanel';
 import ExportButtons from './components/ExportButtons';
+import { BUILD_INFO } from './buildInfo.js';
 
 const API_URL = '/api/transcript';
 const TRANSFORM_URL = '/api/transform';
@@ -250,6 +251,10 @@ export default function App() {
             <p>Paste a YouTube link above to extract the transcript</p>
           </div>
         )}
+
+        <div className="build-info" data-build-version={BUILD_INFO.version}>
+          build {BUILD_INFO.gitSha} · {BUILD_INFO.builtAt} · port {BUILD_INFO.port}
+        </div>
       </main>
 
       {/* Language Choice Modal */}

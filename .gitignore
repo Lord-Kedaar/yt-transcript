@@ -14,6 +14,9 @@ dist/
 # Vite
 client/dist/
 client/.vite/
+client/node_modules/.vite/
+client/node_modules/.cache/
+client/public/build-version.json
 
 # Backups
 *.backup-*

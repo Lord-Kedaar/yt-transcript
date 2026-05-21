@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev:server": "node server.js",
-    "dev:client": "cd client && vite",
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:client": "node client/scripts/dev-disabled.mjs",
+    "dev": "node client/scripts/dev-disabled.mjs",
     "build": "cd client && npm install && npm run build",
     "start": "node server.js"
   },

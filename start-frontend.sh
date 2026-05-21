@@ -1,5 +1,14 @@
 #!/bin/bash
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
-export NVM_DIR="$HOME/.nvm"
-cd /Users/radek/yt-transcript/client
-exec /opt/homebrew/bin/node node_modules/vite/bin/vite.js --host 0.0.0.0 --port 3000
+DIR="$(cd "$(dirname "$0")" && pwd)"
+cat >&2 <<EOF
+ytTranscript Vite frontend server is disabled.
+
+Use the single-port workflow:
+  cd ${DIR}
+  npm run build
+  ./manage.sh restart
+  open http://localhost:4000
+
+Reason: port 3000 caused stale Vite vs Express :4000 divergence.
+EOF
+exit 1

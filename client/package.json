@@ -4,9 +4,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node scripts/dev-disabled.mjs",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview --host 0.0.0.0 --port 4001 --strictPort",
+    "test:summary-parser": "node scripts/test-summary-parser.mjs",
+    "test:pdf-pagination": "node scripts/test-pdf-pagination.mjs"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",
