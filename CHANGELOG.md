@@ -4,11 +4,11 @@
 
 ### Added
 
-- **Text-to-Speech (TTS) via Piper** — backend endpoint `POST /api/tts` generates WAV audio via local Piper TTS engine; `GET /api/audio/:id` serves generated files. Polish female voice (Justyna) pre-installed; EN/DE require manual download.
+- **Text-to-Speech (TTS) via Piper** — backend endpoint `POST /api/tts` generates WAV audio via local Piper TTS engine; `GET /api/audio/:id` serves generated files. Three voices installed: Polish `pl` (Justyna), English `en` (hfc_female), German `de` (thorsten). Auto-detects language from text; accepts explicit `lang` parameter.
 - **Read Aloud button** — speaker (🔊) icon in `ReconstructedPanel` and `SummaryPanel` headers; click generates and plays audio via `useTTS.js` hook. Auto-detects language from content or uses modal choice (`original`/`translate`).
 - **PDF markdown rendering** — `pdfExport.js` now renders inline markdown (`**bold**`, `*italic*`, `- ` lists, `> ` blockquotes) in PDF output via `html2canvas` innerHTML, not stripped plain text.
 - **Chunked Reconstruct for long transcripts** — transcripts with >150 snippets are automatically split into overlapping ~150-snippet chunks, each processed sequentially by LLM, then merged. Prevents truncation caused by model token limits.
-- **Piper integration** — `server.js` includes `PIPER_BIN` and `PIPER_MODELS_DIR` configuration; `TTS_VOICES` map supports `pl` (Justyna), placeholders for `en`/`de`.
+- **Piper integration** — `server.js` includes `PIPER_BIN` and `PIPER_MODELS_DIR` configuration; `TTS_VOICES` map supports `pl` (Justyna), `en` (hfc_female), `de` (thorsten).
 
 ### Changed
 
@@ -22,6 +22,8 @@
 - **Reconstruct truncation on long videos** — root cause was model 32K token limit exceeded by large input. Fixed with chunking.
 - **413 Payload Too Large** — `express.json()` limit increased to 50 MB. Included in v3.1.1 but also applicable here.
 - **PDF export double `.wav` extension** — `/api/audio/:id` route now strips duplicate `.wav` from `req.params.id`.
+- **TTS generation timeout** — `generateTTS()` now kills Piper process after 120s if it hangs, returning HTTP 500 with clear error.
+- **TTS cache accumulation** — server startup cleans WAV files older than 24h from `/tmp/tts-cache/`.
 
 ## v3.1 — 2026-05-21
 

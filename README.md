@@ -31,7 +31,7 @@ YouTube Transcript Extractor + AI Reconstruction — fetch captions from any You
 | Backend | Node.js + Express 4, `youtube-transcript-plus` npm package |
 | LLM     | LM Studio local server (`localhost:1234`), configurable model via `.env` (default: `bielik-11b-v3.0-mlx`) |
 | Cache | In-memory Map with TTL |
-| TTS | Piper local TTS engine (Polish voice `justyna` installed) |
+| TTS | Piper local TTS engine (Polish `justyna`, English `hfc_female`, German `thorsten`) |
 | Launch | `manage.sh` (nohup-based start/stop/restart/status); Vite dev on `:3000` is disabled |
 
 ## Quickstart
