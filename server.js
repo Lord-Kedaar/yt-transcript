@@ -27,8 +27,16 @@ const TTS_VOICES = {
     config: 'pl_PL-justyna_wg_glos-medium.onnx.json',
     espeakVoice: 'pl',
   },
-  en: null, // not available — needs install
-  de: null, // not available — needs install
+  en: {
+    name: 'hfc_female',
+    model: 'en_US-hfc_female-medium.onnx',
+    espeakVoice: 'en-us',
+  },
+  de: {
+    name: 'thorsten',
+    model: 'de_DE-thorsten-medium.onnx',
+    espeakVoice: 'de',
+  },
 };
 const ttsCacheDir = '/tmp/tts-cache';
 fs.mkdirSync(ttsCacheDir, { recursive: true });
@@ -387,8 +395,19 @@ function generateTTS(text, lang, outPath) {
 
     let stderr = '';
     piper.stderr.on('data', d => { stderr += d; });
-    piper.on('error', reject);
+
+    // Timeout: kill Piper if it hangs
+    const timeout = setTimeout(() => {
+      piper.kill('SIGKILL');
+      reject(new Error('TTS generation timed out (120s)'));
+    }, 120000);
+
+    piper.on('error', (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
     piper.on('close', (code) => {
+      clearTimeout(timeout);
       if (code !== 0) reject(new Error(`Piper exited ${code}: ${stderr}`));
       else resolve(outPath);
     });
@@ -444,6 +463,25 @@ app.get('*', (req, res) => {
 });
 
 const server = app.listen(PORT, '0.0.0.0', () => {
+  // Cleanup old TTS cache files on startup (older than 24h)
+  try {
+    const ttsFiles = fs.readdirSync(ttsCacheDir);
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    let cleaned = 0;
+    for (const file of ttsFiles) {
+      if (file.endsWith('.wav')) {
+        const filePath = path.join(ttsCacheDir, file);
+        const stats = fs.statSync(filePath);
+        if (now - stats.mtimeMs > oneDayMs) {
+          fs.unlinkSync(filePath);
+          cleaned++;
+        }
+      }
+    }
+    if (cleaned > 0) console.log(`  Cleaned ${cleaned} old TTS cache files`);
+  } catch (e) { /* ignore */ }
+
   console.log(`\n  yt-transcript API + SPA running`);
   console.log(`    Local:     http://localhost:${PORT}`);
   console.log(`    Tailscale: http://100.127.3.65:${PORT}\n`);
