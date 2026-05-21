@@ -121,8 +121,12 @@ async function callLMTransform({ type, snippets, mode }) {
       userPrompt += `\n\n${promptDef.userSuffix}`;
     }
   }
-  if (translate && type === 'reconstruct') {
-    userPrompt += '\n\nWrite the entire reconstructed text in Polish (język polski). Translate every sentence into Polish.\n\nCRITICAL: ALL content must be in Polish. Do NOT output in English or any other language.';
+  if (translate) {
+    if (type === 'reconstruct') {
+      userPrompt += '\n\nWrite the entire reconstructed text in Polish (język polski). Translate every sentence into Polish.\n\nCRITICAL: ALL content must be in Polish. Do NOT output in English or any other language.';
+    } else {
+      userPrompt += '\n\nWrite the entire summary in Polish (język polski). Translate ALL content — including headers, emphasis, and explanations — into Polish.\n\nCRITICAL: ALL content must be in Polish. Do NOT output in English or any other language.';
+    }
   }
 
   const response = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
@@ -270,10 +274,9 @@ RULES:
 - Explain WHY it matters, not just WHAT was said.
 - Use markdown inline formatting (**bold** for emphasis, *italic* for terms) where it improves readability.
 - Each bullet starts with "- " (dash + space).
-- NO numbered lists, NO code blocks, NO meta-commentary.
-- ALL output MUST be in Polish (język polski). Translate everything into Polish.`,
+- NO numbered lists, NO code blocks, NO meta-commentary.`,
     userPrefix: 'Summarize this transcript into bullet points.',
-    userSuffix: 'STRUCTURE (follow this EXACTLY):\n\n1) First, write ONE paragraph (3-5 sentences) introducing: who is speaking / who is the author, and what is the main topic of this video.\n\n2) Then, for EACH major theme, write a section with:\n   - A bold header like **Theme Name:**\n   - Followed by a detailed paragraph (2-4 sentences) explaining the theme\n\nDo NOT use bullet points with "- ". Use section headers and paragraphs instead.\n\nWrite EVERYTHING in Polish (język polski). NEVER write in English or any other language.\n\nUse **bold** for emphasis and *italic* for terms where helpful.',
+    userSuffix: 'STRUCTURE (follow this EXACTLY):\n\n1) First, write ONE paragraph (3-5 sentences) introducing: who is speaking / who is the author, and what is the main topic of this video.\n\n2) Then, for EACH major theme, write a section with:\n   - A bold header like **Theme Name:**\n   - Followed by a detailed paragraph (2-4 sentences) explaining the theme\n\nDo NOT use bullet points with "- ". Use section headers and paragraphs instead.\n\nUse **bold** for emphasis and *italic* for terms where helpful.',
   }
 };
 

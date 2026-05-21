@@ -280,7 +280,7 @@ export default function App() {
                 </span>
                 <div className="modal-choice-text">
                   <strong>Keep original language</strong>
-                  <span>Reconstruct in the language of the transcript</span>
+                  <span>{modalAction === 'summarize' ? 'Summarize in the language of the transcript' : 'Reconstruct in the language of the transcript'}</span>
                 </div>
               </button>
               <button className="modal-choice-btn modal-choice-translate" onClick={() => handleModalChoice('translate')}>
