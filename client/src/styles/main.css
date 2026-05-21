@@ -270,16 +270,6 @@ body {
   height: 14px;
 }
 
-.auto-badge {
-  display: inline-block;
-  margin-left: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--warning);
-  background: rgba(245, 158, 11, 0.1);
-  padding: 0.2rem 0.6rem;
-  border-radius: var(--radius-sm);
-}
-
 /* ===== Transcript Panel ===== */
 .transcript-container {
   animation: fadeIn 0.4s ease 0.2s both;
@@ -650,30 +640,6 @@ body {
   height: 14px;
 }
 
-.reset-panel-button {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.4rem 0.8rem;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-sm);
-  color: var(--text-primary);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
-}
-
-.reset-panel-button:hover {
-  background: #c0392b;
-  border-color: #c0392b;
-}
-
-.reset-panel-button svg {
-  width: 14px;
-  height: 14px;
-}
-
 .reconstructed-content {
   padding: 1.25rem;
   max-height: 600px;
@@ -716,35 +682,6 @@ body {
   border-top: 1px solid var(--border-color);
   font-size: 0.75rem;
   color: var(--text-muted);
-}
-
-/* ===== Reset Button ===== */
-.reset-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  width: 100%;
-  margin-top: 1.25rem;
-  padding: 0.75rem 1.5rem;
-  background: transparent;
-  border: 1px dashed var(--border-color);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
-}
-
-.reset-button:hover {
-  background: rgba(99, 102, 241, 0.05);
-  border-color: var(--accent-primary);
-  color: var(--accent-hover);
-}
-
-.reset-button svg {
-  width: 18px;
-  height: 18px;
 }
 
 /* ===== Export Buttons ===== */

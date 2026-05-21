@@ -24,6 +24,7 @@
 - **PDF export double `.wav` extension** — `/api/audio/:id` route now strips duplicate `.wav` from `req.params.id`.
 - **TTS generation timeout** — `generateTTS()` now kills Piper process after 120s if it hangs, returning HTTP 500 with clear error.
 - **TTS cache accumulation** — server startup cleans WAV files older than 24h from `/tmp/tts-cache/`.
+- **Dead CSS** — removed `.auto-badge`, `.reset-button`, and `.reset-panel-button` rules (orphaned classes from earlier UI iterations, no longer referenced in JSX).
 - **Summarize always Polish** — base `summarize` system prompt hardcoded `"ALL output MUST be in Polish"` regardless of mode; `userSuffix` translate instruction was only injected for `reconstruct`, never for `summarize`. Fixed by removing hardcoded Polish from base prompt and applying translate `userSuffix` to both `reconstruct` and `summarize`.
 - **Modal text incorrect for summarize** — language choice modal always displayed `"Reconstruct in the language of the transcript"` even when user clicked "Summarize with AI". Fixed by switching to dynamic text based on `modalAction`.
 
