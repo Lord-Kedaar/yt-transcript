@@ -142,7 +142,7 @@ RULES:
 - NO numbered lists, NO code blocks, NO meta-commentary.
 - ALL output MUST be in Polish (język polski). Translate everything into Polish.`,
     userPrefix: 'Summarize this transcript into bullet points.',
-    userSuffix: 'STRUCTURE (follow this EXACTLY):\n\n1) First, write ONE paragraph (3-5 sentences) introducing: who is speaking / who is the author, and what is the main topic of this video. Write this as plain paragraphs — NO bullets here.\n\n2) Then, after a blank line, provide the detailed bullet-point summary.\n\nFormat: each bullet starts with "- ", use **bold** and *italic* for emphasis where helpful.\n\nWrite EVERYTHING in Polish (język polski). NEVER write in English or any other language.',
+    userSuffix: 'STRUCTURE (follow this EXACTLY):\n\n1) First, write ONE paragraph (3-5 sentences) introducing: who is speaking / who is the author, and what is the main topic of this video.\n\n2) Then, for EACH major theme, write a section with:\n   - A bold header like **Theme Name:**\n   - Followed by a detailed paragraph (2-4 sentences) explaining the theme\n\nDo NOT use bullet points with "- ". Use section headers and paragraphs instead.\n\nWrite EVERYTHING in Polish (język polski). NEVER write in English or any other language.\n\nUse **bold** for emphasis and *italic* for terms where helpful.',
   }
 };
 
