@@ -39,6 +39,12 @@
 - **Bielik numbered sections rendered as one wall of text** — parser splits `1) Header: ... 2) Header: ...` even when emitted on one physical line.
 - **Stale `:4000` vs fresh `:3000` confusion** — cache clearing + no-store headers + disabled dev scripts make `:4000` the only supported runtime path.
 
+### v3.1.1 — 2026-05-21
+
+### Fixed
+
+- **413 Payload Too Large on long videos** — `express.json()` default 100 KB limit caused `JSON.parse` errors when summarizing/reconstructing transcripts >100 KB. Increased limit to 50 MB to handle long-form YouTube content.
+
 ### Dependencies
 
 - `jspdf` + `html2canvas` — generowanie PDF z frontendu.
