@@ -76,7 +76,6 @@ async function fetchVideoTitle(videoId) {
 const cache = new Map();
 function getCached(key) { const entry = cache.get(key); if (entry && Date.now() < entry.expires) return entry.value; cache.delete(key); return null; }
 function setCache(key, value, ttlMs = CACHE_TTL_MS) { cache.set(key, { value, expires: Date.now() + ttlMs }); }
-function clearCache() { cache.clear(); }
 
 // C. LM Studio health check function
 async function checkLMStudio() {

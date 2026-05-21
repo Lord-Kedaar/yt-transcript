@@ -33,12 +33,5 @@ export function useTTS({ text, lang }) {
         throw err;
       }
     },
-    stop() {
-      if (currentAudio) {
-        currentAudio.pause();
-        currentAudio.currentTime = 0;
-        currentAudio = null;
-      }
-    },
   };
 }

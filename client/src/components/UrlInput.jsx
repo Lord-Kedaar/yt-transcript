@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export default function UrlInput({ value, onChange, onFetch, loading }) {
   const [focused, setFocused] = useState(false);
