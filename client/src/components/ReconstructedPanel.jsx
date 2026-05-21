@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import { reconstructedToPdfBlocks, exportBlocksToPdf } from '../utils/pdfExport.js';
 
 export default function ReconstructedPanel({ text }) {
   const [copied, setCopied] = useState(false);
@@ -34,37 +33,7 @@ export default function ReconstructedPanel({ text }) {
   }
 
   async function downloadPdf() {
-    const el = saveMenuRef.current?.closest('.reconstructed-panel')?.querySelector('.reconstructed-content');
-    if (!el) return;
-    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#0f172a' });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageWidth = 210;
-    const margin = 15;
-    const imgWidth = pageWidth - margin * 2;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    let heightLeft = imgHeight;
-    let position = 20;
-    pdf.setFontSize(16);
-    pdf.text('Reconstructed Transcript', pageWidth / 2, 12, { align: 'center' });
-    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-    heightLeft -= (297 - position - margin);
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight + 20;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-      heightLeft -= (297 - margin);
-    }
-    // Blob + manual download instead of pdf.save() to ensure filename
-    const pdfBlob = pdf.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = pdfUrl;
-    a.download = 'reconstructed.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(pdfUrl);
+    await exportBlocksToPdf({ title: 'Reconstructed Transcript', filename: 'reconstructed.pdf', blocks: reconstructedToPdfBlocks(text) });
     setShowSaveMenu(false);
   }
 

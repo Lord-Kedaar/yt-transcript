@@ -1,11 +1,20 @@
 import { useState, useRef } from 'react';
-import { jsPDF } from 'jspdf';
-import html2canvas from 'html2canvas';
+import { parseSummarySections, parseInlineMarkdown } from '../utils/summaryParser.js';
+import { summaryToPdfBlocks, exportBlocksToPdf } from '../utils/pdfExport.js';
 
 export default function SummaryPanel({ text }) {
   const [copied, setCopied] = useState(false);
   const [showSaveMenu, setShowSaveMenu] = useState(false);
   const saveMenuRef = useRef(null);
+
+  function renderInlineMarkdown(str) {
+    return parseInlineMarkdown(str).map((part, idx) => {
+      if (typeof part === 'string') return part;
+      if (part.type === 'strong') return <strong key={idx}>{part.content}</strong>;
+      if (part.type === 'em') return <em key={idx}>{part.content}</em>;
+      return part.content || '';
+    });
+  }
 
   function downloadTxt() {
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -34,37 +43,7 @@ export default function SummaryPanel({ text }) {
   }
 
   async function downloadPdf() {
-    const el = saveMenuRef.current?.closest('.summary-panel')?.querySelector('.summary-content');
-    if (!el) return;
-    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#0f172a' });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageWidth = 210;
-    const margin = 15;
-    const imgWidth = pageWidth - margin * 2;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    let heightLeft = imgHeight;
-    let position = 20;
-    pdf.setFontSize(16);
-    pdf.text('Summary', pageWidth / 2, 12, { align: 'center' });
-    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-    heightLeft -= (297 - position - margin);
-    while (heightLeft >= 0) {
-      position = heightLeft - imgHeight + 20;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
-      heightLeft -= (297 - margin);
-    }
-    // Blob + manual download instead of pdf.save() to ensure filename
-    const pdfBlob = pdf.output('blob');
-    const pdfUrl = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = pdfUrl;
-    a.download = 'summary.pdf';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(pdfUrl);
+    await exportBlocksToPdf({ title: 'Summary', filename: 'summary.pdf', blocks: summaryToPdfBlocks(text) });
     setShowSaveMenu(false);
   }
 
@@ -95,70 +74,7 @@ export default function SummaryPanel({ text }) {
     }
   }
 
-  // Parse inline markdown: **bold** and *italic*
-  function parseInlineMarkdown(str) {
-    const parts = [];
-    let idx = 0;
-    while (idx < str.length) {
-      const boldStart = str.indexOf('**', idx);
-      const italicStart = str.indexOf('*', idx);
-      const nextSpecial = Math.min(
-        boldStart !== -1 ? boldStart : Infinity,
-        italicStart !== -1 ? italicStart : Infinity
-      );
-      if (nextSpecial === Infinity) {
-        if (idx < str.length) parts.push(str.slice(idx));
-        break;
-      }
-      // text before
-      if (nextSpecial > idx) {
-        parts.push(str.slice(idx, nextSpecial));
-      }
-      if (nextSpecial === boldStart) {
-        const boldEnd = str.indexOf('**', boldStart + 2);
-        if (boldEnd !== -1) {
-          parts.push(<strong key={idx}>{str.slice(boldStart + 2, boldEnd)}</strong>);
-          idx = boldEnd + 2;
-          continue;
-        }
-      }
-      if (nextSpecial === italicStart) {
-        const italicEnd = str.indexOf('*', italicStart + 1);
-        if (italicEnd !== -1) {
-          parts.push(<em key={idx}>{str.slice(italicStart + 1, italicEnd)}</em>);
-          idx = italicEnd + 1;
-          continue;
-        }
-      }
-      // fallback: push the char and move on
-      parts.push(str[nextSpecial]);
-      idx = nextSpecial + 1;
-    }
-    return parts;
-  }
-
-  // Split text: intro (first bullet or plain text before bullets) + remaining bullets
-  const allLines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-  const firstBulletIdx = allLines.findIndex(line => line.startsWith('- '));
-
-  let introLines, bulletLines;
-  if (firstBulletIdx > 0) {
-    // Has plain intro before first bullet
-    introLines = allLines.slice(0, firstBulletIdx);
-    bulletLines = allLines.slice(firstBulletIdx).map(line => line.replace(/^- +/, ''));
-  } else if (firstBulletIdx === 0) {
-    // No plain intro — treat the FIRST bullet as the intro
-    const first = allLines[0].replace(/^- +/, '');
-    introLines = [first];
-    bulletLines = allLines.slice(1).map(line => line.replace(/^- +/, ''));
-  } else {
-    // No bullets at all
-    introLines = allLines;
-    bulletLines = [];
-  }
-
-  const introText = introLines.join(' ');
-  const hasBullets = bulletLines.length > 0;
+  const { intro, sections } = parseSummarySections(text);
 
   return (
     <div className="summary-panel">
@@ -208,24 +124,24 @@ export default function SummaryPanel({ text }) {
             </div>
           )}
         </div>
-
       </div>
 
       <div className="summary-content">
-        {introText && (
-          <div className="summary-intro">{parseInlineMarkdown(introText)}</div>
+        {intro && (
+          <div className="summary-intro">{renderInlineMarkdown(intro)}</div>
         )}
-        {hasBullets && (
-          <ul>
-            {bulletLines.map((b, i) => (
-              <li key={i}>{parseInlineMarkdown(b)}</li>
+        {sections.map((section, i) => (
+          <div key={i} className="summary-section">
+            <h4 className="summary-section-header">{renderInlineMarkdown(section.header)}</h4>
+            {section.paragraphs.map((para, j) => (
+              <p key={j} className="summary-paragraph">{renderInlineMarkdown(para)}</p>
             ))}
-          </ul>
-        )}
+          </div>
+        ))}
       </div>
 
       <div className="panel-footer">
-        <span>{hasBullets ? bulletLines.length + ' bullet points' : 'No bullets'}</span>
+        <span>{sections.length} sections</span>
         <span>{text.length.toLocaleString()} characters</span>
       </div>
     </div>

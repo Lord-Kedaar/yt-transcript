@@ -204,6 +204,16 @@ body {
 }
 
 /* ===== Error Message ===== */
+.build-info {
+  margin-top: 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+  user-select: text;
+}
+
+/* ===== Error Message ===== */
 .error-message {
   display: flex;
   align-items: center;
@@ -1040,4 +1050,24 @@ body {
   border-left: 3px solid #6366f1;
   font-size: 0.95rem;
   line-height: 1.6;
+}
+
+.summary-section {
+  margin-bottom: 1rem;
+}
+
+.summary-section-header {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #c7d2fe;
+  margin: 0 0 0.5rem 0;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.summary-paragraph {
+  margin: 0 0 0.75rem 0;
+  line-height: 1.7;
+  color: var(--text-primary);
+  font-size: 0.95rem;
 }
