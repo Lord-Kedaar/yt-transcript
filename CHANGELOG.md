@@ -1,5 +1,28 @@
 # Changelog
 
+## [2026-05-21] — Summary intro paragraph + markdown emphasis + multi-format save
+
+### Added
+
+- **Wstępny akapit w podsumowaniu** — każdy summary zaczyna się 3-5 zdaniowym wprowadzeniem identyfikującym autora/speaker i temat wideo.
+- **Menu eksportu Save** — dropdown z 3 opcjami: 💾 TXT, 📝 MD, 📄 PDF.
+- **PDF export** — renderowanie panelu (reconstructed/summary) do canvas via `html2canvas`, potem do PDF via `jspdf`.
+- **Markdown emphasis natively rendered** — frontend `parseInlineMarkdown()` konwertuje `**text**` → `<strong>`, `*text*` → `<em>`.
+- **CSS `.summary-intro`** — wyróżniony wstęp akapitu kolorowym lewym borderem.
+
+### Changed
+
+- **Prompt summarize** — wymusza wstępny akapit + bullet points z markdown.
+- **Prompt reconstruct** — userSuffix wymaga identyfikacji speakera + wprowadzenia.
+- **SummaryPanel** — rozdziela intro od bullets, renderuje osobno.
+- **ReconstructedPanel + SummaryPanel Save** — dropdown menu zamiast bezpośredniego downloadu.
+
+### Dependencies
+
+- `jspdf` + `html2canvas` — generowanie PDF z frontendu.
+
+---
+
 ## [2026-05-21] — Model swap to qwen3.5-9b-mlx-lm-nvfp4 + markdown rendering + Polish enforcement
 
 ### Changed
@@ -8,7 +31,7 @@
 - **Prompts now allow markdown** — system prompt encourages `**bold**` and `*italic*` for emphasis.
 - **SummaryPanel renders markdown inline** — `parseInlineMarkdown()` converts `**text**` → `<strong>`, `*text*` → `<em>`.
 - **Smaller button fonts** — `.reconstruct-button` / `.summarize-button` reduced from `0.875rem` → `0.8rem`, mobile breakpoint `0.85rem` → `0.75rem`.
-- **Stronger Polish translation enforcement** — `summarize` system prompt now explicitly states `ALL output MUST be in Polish`. Reconstruct adds tail instruction `Write the entire reconstructed text in Polish` when translate mode is active.
+- **Stronger Polish translation enforcement** — `summarize` system prompt explicitly states `ALL output MUST be in Polish`. Reconstruct adds tail instruction when translate mode is active.
 
 ### Fixed
 
