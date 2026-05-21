@@ -1,24 +1,11 @@
 import { useState, useRef } from 'react';
-import { reconstructedToPdfBlocks, exportBlocksToPdf } from '../utils/pdfExport.js';
-import { useTTS } from '../hooks/useTTS.js';
+import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
-export default function ReconstructedPanel({ text, lang }) {
+export default function ReconstructedPanel({ text }) {
   const [copied, setCopied] = useState(false);
   const [showSaveMenu, setShowSaveMenu] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const saveMenuRef = useRef(null);
-  const tts = useTTS({ text, lang: lang || 'pl' });
-
-  async function handleSpeak() {
-    try {
-      setIsSpeaking(true);
-      await tts.speak();
-    } catch (e) {
-      console.error('Speak error:', e);
-    } finally {
-      setIsSpeaking(false);
-    }
-  }
 
   function downloadTxt() {
     const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
@@ -47,7 +34,37 @@ export default function ReconstructedPanel({ text, lang }) {
   }
 
   async function downloadPdf() {
-    await exportBlocksToPdf({ title: 'Reconstructed Transcript', filename: 'reconstructed.pdf', blocks: reconstructedToPdfBlocks(text) });
+    const el = saveMenuRef.current?.closest('.reconstructed-panel')?.querySelector('.reconstructed-content');
+    if (!el) return;
+    const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: '#0f172a' });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = 210;
+    const margin = 15;
+    const imgWidth = pageWidth - margin * 2;
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    let heightLeft = imgHeight;
+    let position = 20;
+    pdf.setFontSize(16);
+    pdf.text('Reconstructed Transcript', pageWidth / 2, 12, { align: 'center' });
+    pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+    heightLeft -= (297 - position - margin);
+    while (heightLeft >= 0) {
+      position = heightLeft - imgHeight + 20;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', margin, position, imgWidth, imgHeight);
+      heightLeft -= (297 - margin);
+    }
+    // Blob + manual download instead of pdf.save() to ensure filename
+    const pdfBlob = pdf.output('blob');
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = pdfUrl;
+    a.download = 'reconstructed.pdf';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(pdfUrl);
     setShowSaveMenu(false);
   }
 
@@ -106,16 +123,6 @@ export default function ReconstructedPanel({ text, lang }) {
               </svg>
               Copy
             </>
-          )}
-        </button>
-        <button className="tts-button" onClick={handleSpeak} title="Read aloud" disabled={isSpeaking}>
-          {isSpeaking ? (
-            <span className="spinner-sm" />
-          ) : (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M11 5L6 9H2v6h4l5 4V5z"/>
-              <path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
-            </svg>
           )}
         </button>
         <div className="save-menu-wrapper" ref={saveMenuRef}>

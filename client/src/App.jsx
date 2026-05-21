@@ -22,6 +22,7 @@ export default function App() {
   const [aiProgress, setAiProgress] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalAction, setModalAction] = useState(null); // 'reconstruct' | 'summarize'
+  const [currentLang, setCurrentLang] = useState(''); // 'translate' => pl, '' => en
 
   const timerRef = useRef(null);
   const aiAbortRef = useRef(null);
@@ -71,6 +72,7 @@ export default function App() {
   async function handleModalChoice(mode) {
     closeModal();
     if (!modalAction) return;
+    setCurrentLang(mode === 'translate' ? 'pl' : 'en');
     await handleTransform(modalAction, mode);
   }
 
@@ -231,10 +233,10 @@ export default function App() {
             )}
 
             {reconstructedText && (
-              <ReconstructedPanel text={reconstructedText} />
+              <ReconstructedPanel text={reconstructedText} lang={currentLang} />
             )}
             {summaryText && (
-              <SummaryPanel text={summaryText} />
+              <SummaryPanel text={summaryText} lang={currentLang} />
             )}
 
             <ExportButtons snippets={transcriptData.snippets} />

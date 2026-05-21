@@ -4,6 +4,8 @@ import cors from 'cors';
 import { fetchTranscript } from 'youtube-transcript-plus';
 import he from 'he';
 import fs from 'fs';
+import { spawn } from 'child_process';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -14,6 +16,22 @@ const PORT = process.env.PORT || 4000;
 const LM_STUDIO_URL = process.env.LM_STUDIO_URL || 'http://localhost:1234';
 const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL || 'bielik-11b-v3.0-mlx';
 const CACHE_TTL_MS = (parseInt(process.env.CACHE_TTL_MINUTES) || 60) * 60 * 1000;
+
+// TTS Config
+const PIPER_BIN = process.env.PIPER_BIN || '/Users/radek/.hermes/hermes-agent/venv/bin/piper';
+const PIPER_MODELS_DIR = process.env.PIPER_MODELS_DIR || '/Users/radek/.hermes/piper-models';
+const TTS_VOICES = {
+  pl: {
+    name: 'justyna',
+    model: 'pl_PL-justyna_wg_glos-medium.onnx',
+    config: 'pl_PL-justyna_wg_glos-medium.onnx.json',
+    espeakVoice: 'pl',
+  },
+  en: null, // not available — needs install
+  de: null, // not available — needs install
+};
+const ttsCacheDir = '/tmp/tts-cache';
+fs.mkdirSync(ttsCacheDir, { recursive: true });
 
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '50mb' }));
@@ -61,6 +79,111 @@ async function checkLMStudio() {
     const hasModel = data?.data?.some(m => m.id === LM_STUDIO_MODEL);
     return { ok: true, models: data?.data?.map(m => m.id) || [], requested: LM_STUDIO_MODEL, loaded: hasModel };
   } catch (err) { return { ok: false, error: err.message }; }
+}
+
+// D. LM Studio call + cleanup
+async function callLMTransform({ type, snippets, mode }) {
+  const translate = mode === 'translate';
+  const promptDef = TRANSFORM_PROMPTS[type];
+
+  let rawText;
+  if (type === 'reconstruct') {
+    const MAX_SNIPPETS = 150;
+    const capped = snippets.slice(0, MAX_SNIPPETS);
+    rawText = capped.map(s => s.text).join(' ');
+  } else {
+    rawText = snippets.map(s => s.text).join(' ');
+  }
+
+  let systemPrompt = promptDef.system;
+  if (translate) {
+    if (type === 'reconstruct') {
+      systemPrompt += `\n\nTRANSLATION:\n- EVERYTHING must be in Polish (język polski).\n- This includes headers, emphasis, and all content.\n- Keep the paragraph structure and ALL meaning intact.\n- Translate all content — do NOT leave any part in the original language.`;
+    } else {
+      systemPrompt += `\n\nTRANSLATION:\n- EVERYTHING must be in Polish (język polski).\n- This includes headers, emphasis, and all content.\n- Each bullet point must be written in Polish.\n- Preserve ALL meaning, facts, and nuances — do NOT summarize further during translation.\n- Translate all content — do NOT leave any part in the original language.`;
+    }
+  }
+
+  let userPrompt;
+  if (type === 'reconstruct') {
+    userPrompt = `Reconstruct the transcript below into readable paragraphs. Keep every word exactly as-is. Group related sentences by sub-topic. Separate paragraphs with a blank line.\n\n=== TRANSCRIPT ===\n${rawText}\n=== END ===\n\nOutput ONLY the reconstructed text. No introduction. No summary. No meta-commentary.`;
+  } else {
+    userPrompt = `${promptDef.userPrefix}\n\n=== TRANSCRIPT ===\n${rawText}\n=== END ===`;
+    if (promptDef.userSuffix) {
+      userPrompt += `\n\n${promptDef.userSuffix}`;
+    }
+  }
+  if (translate && type === 'reconstruct') {
+    userPrompt += '\n\nWrite the entire reconstructed text in Polish (język polski). Translate every sentence into Polish.\n\nCRITICAL: ALL content must be in Polish. Do NOT output in English or any other language.';
+  }
+
+  const response = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: LM_STUDIO_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      max_tokens: 32768,
+      temperature: 0.1,
+    }),
+    signal: AbortSignal.timeout(600000), // 10 min per chunk
+  });
+
+  if (!response.ok) {
+    const errData = await response.text();
+    console.error('LM Studio error:', errData);
+    throw new Error('LM Studio returned an error. Is the model loaded?');
+  }
+
+  const data = await response.json();
+  const choice = data.choices?.[0];
+  if (!choice) throw new Error('LM Studio returned no choices.');
+
+  const msg = choice.message || {};
+  let rawContent = msg.content || '';
+  const reasoning = msg.reasoning_content || '';
+  if (!rawContent.trim() && reasoning.trim()) {
+    rawContent = reasoning;
+  }
+
+  let output = rawContent.trim();
+  for (const pattern of REASONING_STRIP_PATTERNS) {
+    output = output.replace(pattern.re, '');
+  }
+  output = output.trim();
+
+  if (!output) throw new Error('LM Studio returned an empty response.');
+  return output;
+}
+
+// E. Chunked reconstruct for long transcripts
+async function reconstructWithChunks(snippets, mode) {
+  const CHUNK_SIZE = 150;
+  const OVERLAP = 25; // carry last N snippets as context into next chunk
+
+  const chunks = [];
+  for (let i = 0; i < snippets.length; i += CHUNK_SIZE - OVERLAP) {
+    chunks.push({
+      snippets: snippets.slice(i, i + CHUNK_SIZE),
+      index: chunks.length + 1,
+      total: 0, // filled after loop
+    });
+  }
+  chunks.forEach(c => c.total = chunks.length);
+  console.log(`Reconstruct: processing ${snippets.length} snippets in ${chunks.length} chunks`);
+
+  const outputs = [];
+  for (const chunk of chunks) {
+    console.log(`Reconstruct chunk ${chunk.index}/${chunk.total} (${chunk.snippets.length} snippets)`);
+    const output = await callLMTransform({ type: 'reconstruct', snippets: chunk.snippets, mode });
+    outputs.push(output);
+  }
+
+  // Merge chunk outputs with paragraph separators
+  return outputs.join('\n\n');
 }
 
 app.get('/api/health', async (req, res) => {
@@ -128,8 +251,8 @@ OUTPUT RULES:
 - Do NOT add thinking steps, numbered lists, or self-correction notes
 - Do NOT include any meta-commentary like "Paragraph 1" or "Self-correction"
 - NO markdown \`\`\` blocks — output plain text only`,
-    userPrefix: 'Reconstruct this transcript into readable paragraphs. Keep every word exactly as-is.',
-    userSuffix: 'Format: one blank line between each paragraph.\n\nIf the transcript contains speaker names, identify the main speaker(s) and begin with a brief 1-2 sentence introduction (author/topic of the video). Then continue with the full reconstructed text.',
+    userPrefix: 'Below is a raw transcript with sentence fragments. Reconstruct it into readable paragraphs. Keep every word exactly as-is. Group related sentences by sub-topic. Separate paragraphs with a blank line. Output ONLY the reconstructed text — no introduction, no meta-commentary, no summary.',
+    userSuffix: '',
   },
   summarize: {
     system: `You are a summarization assistant. Produce a comprehensive, detailed bullet-point summary of the transcript.
@@ -160,11 +283,12 @@ const REASONING_STRIP_PATTERNS = [
   { re: /I wіll carefully (?:check|paste|construct|output)\..*?\s*/gi, label: 'iwl' },
   { re: /Actually,? I'?ll just output.*?\s*/gi, label: 'actually' },
   { re: /I'?ll format it carefully\.\s*/gi, label: 'format' },
+  { re: /^\s*-{3,}\s*$/gm, label: 'divider' },
+  { re: /^\s*=+\s*$/gm, label: 'equals-divider' },
 ];
 
 app.post('/api/transform', async (req, res) => {
   const { snippets, type, mode, title } = req.body;
-  const translate = mode === 'translate';
 
   if (!snippets || !Array.isArray(snippets) || snippets.length === 0) {
     return res.status(400).json({ error: 'No snippets provided.' });
@@ -179,91 +303,20 @@ app.post('/api/transform', async (req, res) => {
     return res.status(503).json({ error: 'LM Studio is unreachable. Please ensure it is running with a model loaded.' });
   }
 
-  const promptDef = TRANSFORM_PROMPTS[type];
-
-  // Build raw text + cap snippet count
-  let rawText;
-  if (type === 'reconstruct') {
-    const MAX_SNIPPETS = 300;
-    if (snippets.length > MAX_SNIPPETS) {
-      console.warn(`Transform/reconstruct: capping ${snippets.length} snippets to ${MAX_SNIPPETS}`);
-    }
-    const capped = snippets.slice(0, MAX_SNIPPETS);
-    rawText = capped.map(s => s.text).join(' ');
-  } else {
-    rawText = snippets.map(s => s.text).join(' ');
-  }
-
-  // Build system prompt
-  let systemPrompt = promptDef.system;
-  if (translate) {
-    if (type === 'reconstruct') {
-      systemPrompt += `\n\nTRANSLATION:\n- EVERYTHING must be in Polish (język polski).\n- This includes headers, emphasis, and all content.\n- Keep the paragraph structure and ALL meaning intact.\n- Translate all content — do NOT leave any part in the original language.`;
-    } else {
-      systemPrompt += `\n\nTRANSLATION:\n- EVERYTHING must be in Polish (język polski).\n- This includes headers, emphasis, and all content.\n- Each bullet point must be written in Polish.\n- Preserve ALL meaning, facts, and nuances — do NOT summarize further during translation.\n- Translate all content — do NOT leave any part in the original language.`;
-    }
-  }
-
-  // Build user prompt
-  let userPrompt = promptDef.userPrefix;
-  userPrompt += `\n\n${rawText}`;
-  if (promptDef.userSuffix) {
-    userPrompt += `\n\n${promptDef.userSuffix}`;
-  }
-  if (translate && type === 'reconstruct') {
-    userPrompt += '\n\nWrite the entire reconstructed text in Polish (język polski). Translate every sentence into Polish.\n\nCRITICAL: ALL content must be in Polish. Do NOT output in English or any other language.';
-  }
-
   try {
-    const response = await fetch(`${LM_STUDIO_URL}/v1/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: LM_STUDIO_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: 32768,
-        temperature: 0.1,
-      }),
-      signal: AbortSignal.timeout(1800000),
-    });
+    let output;
+    let chunkCount = 1;
 
-    if (!response.ok) {
-      const errData = await response.text();
-      console.error('LM Studio error:', errData);
-      return res.status(502).json({ error: 'LM Studio returned an error. Is the model loaded?' });
+    if (type === 'reconstruct') {
+      // Always use chunking; for short transcripts produces 1 chunk
+      output = await reconstructWithChunks(snippets, mode || 'original');
+      chunkCount = Math.ceil(snippets.length / (150 - 25)); // approximate; can refine
+      if (snippets.length <= 150) chunkCount = 1;
+    } else {
+      output = await callLMTransform({ type, snippets, mode: mode || 'original' });
     }
 
-    const data = await response.json();
-    const choice = data.choices?.[0];
-    if (!choice) {
-      return res.status(500).json({ error: 'LM Studio returned no choices.' });
-    }
-
-    const msg = choice.message || {};
-    let rawContent = msg.content || '';
-    const reasoning = msg.reasoning_content || '';
-
-    // Fallback: reasoning_content sometimes has the actual output
-    if (!rawContent.trim() && reasoning.trim()) {
-      rawContent = reasoning;
-    }
-
-    let output = rawContent.trim();
-
-    // Strip reasoning meta-commentary
-    for (const pattern of REASONING_STRIP_PATTERNS) {
-      output = output.replace(pattern.re, '');
-    }
-    output = output.trim();
-
-    if (!output) {
-      return res.status(500).json({ error: 'LM Studio returned an empty response.' });
-    }
-
-    // Cache result
+    // Cache result (key on all snippet text + type)
     const cacheKey = `${type}:${Buffer.from(snippets.map(s => s.text).join(' ')).toString('base64')}`;
     setCache(cacheKey, { output, type, snippetCount: snippets.length, model: LM_STUDIO_MODEL });
 
@@ -271,9 +324,9 @@ app.post('/api/transform', async (req, res) => {
     res.json({
       [responseKey]: output,
       snippetCount: snippets.length,
+      chunkCount,
       model: LM_STUDIO_MODEL,
     });
-
   } catch (err) {
     console.error(`Transform/${type} error:`, err);
     res.status(502).json({ error: err.message || `Transformation failed` });
@@ -304,6 +357,84 @@ app.get('/api/build-version', (req, res) => {
     return res.sendFile(BUILD_VERSION_FILE);
   }
   return res.status(404).json({ error: 'Build version file not found. Run npm run build.' });
+});
+
+// TTS Utility: simple language detection
+function detectLanguage(text = '') {
+  const t = text.slice(0, 500).toLowerCase();
+  const plChars = (t.match(/[ąćęłńóśźż]/g) || []).length;
+  const deChars = (t.match(/[äöüß]/g) || []).length;
+  if (plChars > 1) return 'pl';
+  if (deChars > 1) return 'de';
+  return 'en'; // default fallback
+}
+
+// TTS Utility: generate WAV via Piper
+function generateTTS(text, lang, outPath) {
+  return new Promise((resolve, reject) => {
+    const voice = TTS_VOICES[lang];
+    if (!voice || !voice.model) {
+      return reject(new Error(`No TTS voice for language: ${lang}`));
+    }
+    
+    const modelPath = path.join(PIPER_MODELS_DIR, voice.model);
+    const configPath = voice.config
+      ? path.join(PIPER_MODELS_DIR, voice.config)
+      : modelPath.replace('.onnx', '.onnx.json');
+
+    const args = ['-m', modelPath, '-c', configPath, '-f', outPath];
+    const piper = spawn(PIPER_BIN, args);
+
+    let stderr = '';
+    piper.stderr.on('data', d => { stderr += d; });
+    piper.on('error', reject);
+    piper.on('close', (code) => {
+      if (code !== 0) reject(new Error(`Piper exited ${code}: ${stderr}`));
+      else resolve(outPath);
+    });
+
+    piper.stdin.write(text);
+    piper.stdin.end();
+  });
+}
+
+// TTS endpoint
+app.post('/api/tts', async (req, res) => {
+  try {
+    const { text, lang } = req.body;
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ error: 'Text is required and must be non-empty.' });
+    }
+    const detectedLang = (lang && ['pl','en','de'].includes(lang)) ? lang : detectLanguage(text);
+    const voice = TTS_VOICES[detectedLang];
+    if (!voice || !voice.model) {
+      return res.status(404).json({
+        error: `No TTS voice available for language '${detectedLang}'.`,
+        hint: `Install a female Piper voice for ${detectedLang}: hermes piper download ${detectedLang}-female`,
+      });
+    }
+
+    const id = `${detectedLang}-${crypto.randomBytes(8).toString('hex')}`;
+    const outPath = path.join(ttsCacheDir, `${id}.wav`);
+    await generateTTS(text.trim(), detectedLang, outPath);
+
+    res.json({ audioUrl: `/api/audio/${id}.wav`, lang: detectedLang });
+  } catch (err) {
+    console.error('TTS error:', err);
+    res.status(500).json({ error: 'TTS generation failed: ' + err.message });
+  }
+});
+
+// Serve generated WAV files
+app.get('/api/audio/:id', (req, res) => {
+  const id = req.params.id.replace(/\.wav$/, '');
+  const filePath = path.join(ttsCacheDir, `${id}.wav`);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ error: 'Audio not found.' });
+  }
+  res.setHeader('Content-Type', 'audio/wav');
+  res.setHeader('Cache-Control', 'no-store');
+  res.sendFile(filePath);
 });
 
 app.use(express.static(DIST_DIR, { setHeaders: setNoCacheHeaders }));
