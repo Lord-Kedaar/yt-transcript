@@ -1,34 +1,43 @@
 # Changelog
 
-## [2026-05-21] — Revert to bielik-11b-v3.0-mlx + aggressive Polish enforcement + PDF filename fix + adaptive intro
-
-### Changed
-
-- **Model:** `qwen3.5-9b-mlx-lm-nvfp4` → `bielik-11b-v3.0-mlx` (better Polish prose quality, despite lower prompt obedience).
-- **Prompts now aggressively enforce Polish** — `userSuffix` contains `CRITICAL: ALL content must be in Polish. NEVER write in English.` in both reconstruct and summarize.
-- **Summary intro adapted for Bielik** — Bielik produces intro as first bullet instead of plain paragraph. `SummaryPanel` now treats first bullet as intro when no plain intro exists (`firstBulletIdx === 0`).
-- **PDF export filename fixed** — `pdf.save()` replaced with `pdf.output('blob')` + manual `<a download>` link to ensure `summary.pdf` / `reconstructed.pdf` filenames in Safari.
-- **SummaryPanel conditional bullets** — hides `<ul>` when no bullets remain after extracting intro.
-
-### Fixed
-
-- **PDF saved as `export.pdf`** — Safari ignored `pdf.save(filename)`. Now uses blob + download link.
-- **Inconsistent intro rendering** — handles both Bielik-style (first bullet = intro) and Qwen-style (plain intro paragraph).
+## v3.1 — 2026-05-21
 
 ### Added
 
+- **Shared PDF export utility** — `client/src/utils/pdfExport.js` centralizes block-level pagination, measurement, page rendering, and blob download. One white A4 DOM/canvas per PDF page avoids clipping/duplication at boundaries.
+- **Bielik summary parser** — `client/src/utils/summaryParser.js` parses section formats: numbered headers (`1) Header:`), bold headers (`**Header:**`), combined (`1) **Header:**`), and same-line inline sections.
+- **Regression tests** — `test:pdf-pagination` (5 assertions) and `test:summary-parser` (9 assertions) runnable via `npm run` in `client/`.
+- **Build versioning** — `client/vite.config.js` injects `BUILD_INFO` and writes `client/public/build-version.json`; UI footer displays SHA/timestamp/port.
+- **Runtime build visibility** — backend serves `GET /api/build-version` from the same artifact.
 - **Wstępny akapit w podsumowaniu** — każdy summary zaczyna się 3-5 zdaniowym wprowadzeniem identyfikującym autora/speaker i temat wideo.
 - **Menu eksportu Save** — dropdown z 3 opcjami: 💾 TXT, 📝 MD, 📄 PDF.
-- **PDF export** — renderowanie panelu (reconstructed/summary) do canvas via `html2canvas`, potem do PDF via `jspdf`.
-- **Markdown emphasis natively rendered** — frontend `parseInlineMarkdown()` konwertuje `**text**` → `<strong>`, `*text*` → `<em>`.
+- **Markdown emphasis natively rendered** — `parseInlineMarkdown()` konwertuje `**text**` → `<strong>`, `*text*` → `<em>`.
 - **CSS `.summary-intro`** — wyróżniony wstęp akapitu kolorowym lewym borderem.
+- **CSS `.summary-section`, `.summary-section-header`, `.summary-paragraph`** — section-based rendering layout.
 
 ### Changed
 
-- **Prompt summarize** — wymusza wstępny akapit + bullet points z markdown.
-- **Prompt reconstruct** — userSuffix wymaga identyfikacji speakera + wprowadzenia.
-- **SummaryPanel** — rozdziela intro od bullets, renderuje osobno.
-- **ReconstructedPanel + SummaryPanel Save** — dropdown menu zamiast bezpośredniego downloadu.
+- **PDF export architecture** — replaced the old one-tall-html2canvas bitmap reused with negative Y offsets with block-level pagination. Preserves Polish glyphs via browser rasterization.
+- **SummaryPanel / ReconstructedPanel** — both call shared `exportBlocksToPdf()`; removed duplicated PDF generation logic.
+- **SummaryPanel rendering** — replaced inline bullet regex with `parseSummarySections()` from `summaryParser.js`; now renders sections with bold headers + paragraphs.
+- **Prompt UX** — summarize `userSuffix` now requests structured sections (`**Theme:**` + paragraph) instead of `- ` bullet points.
+- **Model** — `qwen3.5-9b-mlx-lm-nvfp4` → `bielik-11b-v3.0-mlx` (better Polish prose quality, despite lower prompt obedience).
+- **Prompts aggressively enforce Polish** — `userSuffix` contains `CRITICAL: ALL content must be in Polish.` in both reconstruct and summarize.
+- **Summary intro adapted for Bielik** — Bielik produces intro as first bullet; `SummaryPanel` treats first bullet as intro when no plain intro exists.
+- **Express static serving** — returns `Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate` plus `Pragma`, `Expires`, and `Surrogate-Control`.
+- **Vite workflow** — `npm run dev`, `npm run dev:client`, and `start-frontend.sh` no longer start Vite on `:3000`; they print the single-port `:4000` workflow and exit.
+- **Vite fallback port** — moved from `3000` to strict `4001` to avoid ambiguity with production `4000`.
+- **Summary / Reconstruct button font sizes reduced** — `0.8rem` desktop, `0.75rem` mobile.
+- **Header regex relaxed** — handles `1) **Nagłówek:**` in addition to plain `**Nagłówek:**`.
+
+### Fixed
+
+- **PDF page-boundary clipping/duplication** — text no longer gets cut and repeated around page breaks.
+- **Reconstructed PDF dark background** — reconstructed exports now use the same white-page renderer as summaries.
+- **PDF saved as `export.pdf`** — Safari ignored `pdf.save(filename)`; now uses blob + `<a download>` link.
+- **Inconsistent intro rendering** — handles both Bielik-style (first bullet = intro) and Qwen-style (plain intro paragraph).
+- **Bielik numbered sections rendered as one wall of text** — parser splits `1) Header: ... 2) Header: ...` even when emitted on one physical line.
+- **Stale `:4000` vs fresh `:3000` confusion** — cache clearing + no-store headers + disabled dev scripts make `:4000` the only supported runtime path.
 
 ### Dependencies
 
@@ -52,8 +61,6 @@
 - **Markdown bold appearing as plain text** — now rendered as styled `<strong>` / `<em>` in the UI.
 
 ---
-
-All notable changes to this project are documented here.
 
 ## [2026-05-19] — LLM prompt echo + markdown cleanup in summaries
 
