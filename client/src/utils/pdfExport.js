@@ -30,21 +30,78 @@ export function stripMarkdown(text) {
     .replace(/\*+/g, '');
 }
 
+function inlineMdToHtml(text = '') {
+  return String(text)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>');
+}
+
+export function mdToHtml(text = '') {
+  if (typeof document === 'undefined') return text; // SSR safety
+
+  const lines = text.split('\n');
+  let html = '';
+  let inQuote = false;
+  let inList = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith('* ') || trimmed.startsWith('- ')) {
+      if (!inList) {
+        html += '<ul>\n';
+        inList = true;
+      }
+      html += `\u003cli\u003e${inlineMdToHtml(trimmed.slice(2))}\u003c/li\u003e\n`;
+      continue;
+    }
+
+    if (trimmed.startsWith('>')) {
+      const quoteContent = trimmed.slice(1).trim();
+      if (!inQuote) {
+        html += '<blockquote>\n';
+        inQuote = true;
+      }
+      html += `\u003cp\u003e${inlineMdToHtml(quoteContent)}\u003c/p\u003e\n`;
+      continue;
+    }
+
+    // Close open blocks
+    if (inList) {
+      html += '</ul>\n';
+      inList = false;
+    }
+    if (inQuote) {
+      html += '</blockquote>\n';
+      inQuote = false;
+    }
+
+    if (trimmed) {
+      html += `\u003cp\u003e${inlineMdToHtml(trimmed)}\u003c/p\u003e\n`;
+    }
+  }
+
+  if (inList) html += '</ul>\n';
+  if (inQuote) html += '</blockquote>\n';
+
+  return html;
+}
+
 export function summaryToPdfBlocks(rawText) {
   const blocks = [];
   const { intro, sections } = parseSummarySections(rawText);
 
   if (intro?.trim()) {
-    blocks.push({ type: 'intro', text: stripMarkdown(intro.trim()) });
+    blocks.push({ type: 'intro', text: intro.trim() });
   }
 
   for (const section of sections) {
     if (section.header?.trim()) {
-      blocks.push({ type: 'sectionHeader', text: stripMarkdown(section.header.trim()) });
+      blocks.push({ type: 'sectionHeader', text: section.header.trim() });
     }
     for (const para of section.paragraphs || []) {
       if (para?.trim()) {
-        blocks.push({ type: 'paragraph', text: stripMarkdown(para.trim()) });
+        blocks.push({ type: 'paragraph', text: para.trim() });
       }
     }
   }
@@ -57,7 +114,7 @@ export function reconstructedToPdfBlocks(text) {
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean)
-    .map((p) => ({ type: 'paragraph', text: stripMarkdown(p) }));
+    .map((p) => ({ type: 'paragraph', text: p }));
 }
 
 export function paginateMeasuredBlocks(blocks, { availableHeight }) {
@@ -134,7 +191,8 @@ function createBlockElement(block, index) {
   const el = document.createElement(tag);
   el.className = blockClass(block.type);
   el.dataset.pdfBlockIndex = String(index);
-  el.textContent = block.text || '';
+  // Use innerHTML for all types so markdown formatting survives html2canvas
+  el.innerHTML = mdToHtml(block.text || '');
 
   if (block.type === 'sectionHeader') {
     el.style.cssText = 'font-size:16px;font-weight:700;line-height:1.35;margin:18px 0 8px 0;color:#111827;break-after:avoid;';
