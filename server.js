@@ -56,6 +56,8 @@ const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 app.disable('x-powered-by');
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '16mb' }));
+// Serve static assets from build output
+app.use('/assets', express.static(path.join(__dirname, 'client', 'dist', 'assets'), { immutable: true, maxAge: '1y' }));
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   next();
