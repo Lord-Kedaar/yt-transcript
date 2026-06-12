@@ -10,6 +10,70 @@ import { BUILD_INFO } from './buildInfo.js';
 
 const API_URL = '/api/transcript';
 const TRANSFORM_URL = '/api/transform';
+const UI_STATE_KEY = 'ytTranscript.uiState.v1';
+
+function safeParseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function formatElapsedSeconds(startedAt) {
+  if (!startedAt) return 0;
+  return Math.max(1, Math.floor((Date.now() - startedAt) / 1000));
+}
+
+function formatAiProgress(type, startedAt, paused = false) {
+  const base = type === 'reconstruct' ? 'AI reconstructing...' : 'AI summarizing...';
+  if (!startedAt) return paused ? `${base} (paused)` : base;
+  const secs = formatElapsedSeconds(startedAt);
+  return paused ? `${base} (paused, ${secs}s)` : `${base} (${secs}s)`;
+}
+
+function serializeUiState(state) {
+  return JSON.stringify(state);
+}
+
+function exportUiState({
+  url,
+  transcriptData,
+  reconstructedText,
+  summaryText,
+  currentLang,
+  pendingTransform,
+}) {
+  const payload = {
+    url,
+    transcriptData,
+    reconstructedText,
+    summaryText,
+    currentLang,
+    pendingTransform,
+  };
+  try {
+    sessionStorage.setItem(UI_STATE_KEY, serializeUiState(payload));
+  } catch (err) {
+    console.warn('Failed to persist UI state', err);
+  }
+}
+
+function clearUiState() {
+  try {
+    sessionStorage.removeItem(UI_STATE_KEY);
+  } catch (err) {
+    console.warn('Failed to clear UI state', err);
+  }
+}
+
+function loadUiState() {
+  try {
+    return safeParseJson(sessionStorage.getItem(UI_STATE_KEY));
+  } catch {
+    return null;
+  }
+}
 
 export default function App() {
   const [url, setUrl] = useState('');
@@ -26,8 +90,105 @@ export default function App() {
 
   const timerRef = useRef(null);
   const aiAbortRef = useRef(null);
+  const aiStartedAtRef = useRef(null);
+  const pendingTransformRef = useRef(null);
+  const pageSuspendedRef = useRef(false);
+  const hydratedRef = useRef(false);
+  const resumeInFlightRef = useRef(false);
 
-  // Lock body scroll when modal is open
+  // Restore state after Safari backgrounding / bfcache resume.
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    hydratedRef.current = true;
+
+    const saved = loadUiState();
+    if (!saved) return;
+
+    if (typeof saved.url === 'string') setUrl(saved.url);
+    if (saved.transcriptData) setTranscriptData(saved.transcriptData);
+    if (typeof saved.reconstructedText === 'string') setReconstructedText(saved.reconstructedText);
+    if (typeof saved.summaryText === 'string') setSummaryText(saved.summaryText);
+    if (typeof saved.currentLang === 'string') setCurrentLang(saved.currentLang);
+
+    if (saved.pendingTransform && saved.transcriptData) {
+      pendingTransformRef.current = saved.pendingTransform;
+      aiStartedAtRef.current = saved.pendingTransform.startedAt || Date.now();
+      resumeInFlightRef.current = true;
+      setAiLoading(true);
+      setAiProgress(formatAiProgress(saved.pendingTransform.type, aiStartedAtRef.current, true));
+      queueMicrotask(() => {
+        pageSuspendedRef.current = false;
+        handleTransform(saved.pendingTransform.type, saved.pendingTransform.mode || 'original', saved.transcriptData, {
+          resume: true,
+          startedAt: aiStartedAtRef.current,
+        });
+      });
+    }
+  }, []);
+
+  useEffect(() => {
+    const maybeResume = () => {
+      const saved = loadUiState();
+      if (!saved || !saved.pendingTransform || !saved.transcriptData) return;
+      if (aiLoading || resumeInFlightRef.current) return;
+
+      pendingTransformRef.current = saved.pendingTransform;
+      aiStartedAtRef.current = saved.pendingTransform.startedAt || Date.now();
+      resumeInFlightRef.current = true;
+      pageSuspendedRef.current = false;
+      setAiLoading(true);
+      setAiProgress(formatAiProgress(saved.pendingTransform.type, aiStartedAtRef.current, true));
+      handleTransform(saved.pendingTransform.type, saved.pendingTransform.mode || 'original', saved.transcriptData, {
+        resume: true,
+        startedAt: aiStartedAtRef.current,
+      });
+    };
+
+    const onPageHide = () => {
+      if (!aiLoading || !pendingTransformRef.current) return;
+      pageSuspendedRef.current = true;
+      exportUiState({
+        url,
+        transcriptData,
+        reconstructedText,
+        summaryText,
+        currentLang,
+        pendingTransform: pendingTransformRef.current,
+      });
+    };
+
+    const onPageShow = () => {
+      maybeResume();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        if (aiLoading && pendingTransformRef.current) {
+          pageSuspendedRef.current = true;
+          exportUiState({
+            url,
+            transcriptData,
+            reconstructedText,
+            summaryText,
+            currentLang,
+            pendingTransform: pendingTransformRef.current,
+          });
+        }
+        return;
+      }
+      maybeResume();
+    };
+
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [aiLoading, currentLang, reconstructedText, summaryText, transcriptData, url]);
+
   useEffect(() => {
     document.body.style.overflow = modalOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
@@ -42,6 +203,7 @@ export default function App() {
     setReconstructedText('');
     setSummaryText('');
     setAiProgress('');
+    resumeInFlightRef.current = false;
 
     try {
       const res = await fetch(`${API_URL}?url=${encodeURIComponent(url.trim())}`);
@@ -52,6 +214,16 @@ export default function App() {
       }
 
       setTranscriptData(data);
+      pendingTransformRef.current = null;
+      aiStartedAtRef.current = null;
+      exportUiState({
+        url: url.trim(),
+        transcriptData: data,
+        reconstructedText: '',
+        summaryText: '',
+        currentLang,
+        pendingTransform: null,
+      });
     } catch (err) {
       setError(err.message || 'An unexpected error occurred');
     } finally {
@@ -76,8 +248,10 @@ export default function App() {
     await handleTransform(modalAction, mode);
   }
 
-  async function handleTransform(type, mode = 'original') {
-    if (!transcriptData) return;
+  async function handleTransform(type, mode = 'original', sourceTranscript = transcriptData, options = {}) {
+    if (!sourceTranscript) return;
+
+    const { resume = false, startedAt = Date.now() } = options;
 
     // Cancel any previous request
     if (aiAbortRef.current) {
@@ -86,26 +260,46 @@ export default function App() {
     const controller = new AbortController();
     aiAbortRef.current = controller;
 
+    const pendingTransform = {
+      type,
+      mode,
+      startedAt,
+    };
+    pendingTransformRef.current = pendingTransform;
+    aiStartedAtRef.current = startedAt;
+    pageSuspendedRef.current = false;
+
     setAiLoading(true);
     setError('');
+    setAiProgress(formatAiProgress(type, startedAt, resume));
 
-    const progressLabel = type === 'reconstruct' ? 'AI reconstructing...' : 'AI summarizing...';
-    let sec = 0;
-    setAiProgress(progressLabel);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
     timerRef.current = setInterval(() => {
-      sec += 1;
-      setAiProgress(`${progressLabel} (${sec}s)`);
+      setAiProgress(formatAiProgress(type, aiStartedAtRef.current, pageSuspendedRef.current));
     }, 1000);
+
+    exportUiState({
+      url,
+      transcriptData: sourceTranscript,
+      reconstructedText,
+      summaryText,
+      currentLang,
+      pendingTransform,
+    });
+
+    let completed = false;
 
     try {
       const res = await fetch(TRANSFORM_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          snippets: transcriptData.snippets,
+          snippets: sourceTranscript.snippets,
           type,
           mode,
-          title: transcriptData?.title || '',
+          title: sourceTranscript?.title || '',
         }),
         signal: controller.signal,
       });
@@ -123,18 +317,49 @@ export default function App() {
         setSummaryText(data.summary);
         setReconstructedText('');
       }
+
+      completed = true;
+      pendingTransformRef.current = null;
+      aiStartedAtRef.current = null;
+      exportUiState({
+        url,
+        transcriptData: sourceTranscript,
+        reconstructedText: type === 'reconstruct' ? data.reconstructed : '',
+        summaryText: type === 'summarize' ? data.summary : '',
+        currentLang,
+        pendingTransform: null,
+      });
     } catch (err) {
+      if (err.name === 'AbortError' && pageSuspendedRef.current) {
+        // Safari may suspend or abort the request in the background; keep the pending task and resume later.
+        return;
+      }
       if (err.name === 'AbortError') {
         console.log('Transform aborted');
         setError(`${type === 'reconstruct' ? 'Reconstruction' : 'Summarization'} cancelled`);
       } else {
         setError(err.message || 'Transformation failed');
       }
+      if (!pageSuspendedRef.current) {
+        pendingTransformRef.current = null;
+      }
     } finally {
       setAiLoading(false);
       if (timerRef.current) clearInterval(timerRef.current);
       setAiProgress('');
       aiAbortRef.current = null;
+      resumeInFlightRef.current = false;
+
+      if (!pageSuspendedRef.current && !completed) {
+        exportUiState({
+          url,
+          transcriptData: sourceTranscript,
+          reconstructedText,
+          summaryText,
+          currentLang,
+          pendingTransform: null,
+        });
+      }
     }
   }
 
@@ -149,6 +374,11 @@ export default function App() {
       timerRef.current = null;
     }
 
+    pendingTransformRef.current = null;
+    aiStartedAtRef.current = null;
+    pageSuspendedRef.current = false;
+    resumeInFlightRef.current = false;
+
     setAiLoading(false);
     setUrl('');
     setError('');
@@ -156,6 +386,7 @@ export default function App() {
     setReconstructedText('');
     setSummaryText('');
     setAiProgress('');
+    clearUiState();
   }
 
   const isReconstructing = aiLoading && modalAction === 'reconstruct';
@@ -229,7 +460,20 @@ export default function App() {
             </div>
 
             {aiProgress && (
-              <div className="reconstruct-progress">{aiProgress}</div>
+              <div className="reconstruct-progress" aria-live="polite">
+                <div className="reconstruct-progress-text">
+                  <span className="reconstruct-progress-badge" />
+                  <span>{aiProgress}</span>
+                  <span className="reconstruct-progress-dots" aria-hidden="true">
+                    <span />
+                    <span />
+                    <span />
+                  </span>
+                </div>
+                <div className="reconstruct-progress-track" aria-hidden="true">
+                  <div className="reconstruct-progress-fill" />
+                </div>
+              </div>
             )}
 
             {reconstructedText && (

@@ -1,236 +1,101 @@
 # ytTranscript
 
-YouTube Transcript Extractor + AI Reconstruction — fetch captions from any YouTube video and reconstruct fragmented auto-generated transcripts into readable text using a local LLM.
+Single-port web app for extracting YouTube transcripts, reconstructing
+fragmented subtitle text via a local LLM, and producing a bullet-point
+summary — all in one place, all on your own machine.
 
-## What it does
+- **Backend**: Node.js / Express, single-port :4000 (SPA + API)
+- **Frontend**: React 18 + Vite (built and served from the same port)
+- **LLM**: oMLX (Apple-Silicon-native, OpenAI-compatible)
+- **TTS (optional)**: Piper with pl / en / de voices
+- **Status**: stable prototype, review-ready, portfolio-ready
 
-1. **Paste a YouTube URL** → the backend fetches available captions via `youtube-transcript-plus`.
-2. **Review raw segments** → timestamped transcript panels with hover/click highlighting.
-3. **Choose language mode** — before Reconstruct or Summarize, pick "Keep original language" or "Translate to Polish". This controls whether the LLM preserves the transcript's native language or translates output into Polish.
-4. **AI Reconstruct** → sends the fragmented snippets to LM Studio which merges broken-up sentences back into readable paragraphs. **Long transcripts are automatically chunked into ~150-snippet segments and processed sequentially**, then merged back into a full reconstruction.
-5. **AI Summarize** — generates structured sections with **bold headers** and paragraphs, covering all major themes with styled markdown emphasis (bold / italic) rendered natively.
-6. **Export** — download as TXT, MD, or paginated PDF. PDF export renders one white A4 page canvas per PDF page to avoid page-boundary clipping/duplication while preserving Polish glyphs. PDF now supports **inline markdown rendering** (bold, italic, lists, blockquotes).
-7. **TTS / Read Aloud** — click the 🔊 speaker icon next to Reconstructed Text or AI Summary to generate and play WAV audio via local **Piper TTS**. Three voices installed: Polish (`justyna`), English (`hfc_female`), German (`thorsten`). Auto-detects language from text; accepts explicit `lang` parameter.
+## What this app does
 
-## Architecture
+1. Paste a YouTube URL.
+2. Fetch the transcript (auto-detected captions, fallback to auto-generated).
+3. Click **Reconstruct with AI** — fragmented snippets become readable paragraphs.
+4. Click **Summarize with AI** — get a bullet-point summary of the whole thing.
+5. Optional: read aloud via TTS (Piper), or export as TXT / SRT / PDF / Markdown.
 
-```
-┌─────────────────┐         ┌──────────────────┐         ┌───────────────┐
-│  Browser        │ HTTP    │  Express Server  │ TCP     │  LM Studio    │
-│  React + Vite   │  ◄──►   │  Port 4000       │  ───►   │  Port 1234    │
-│  (SPA served    │         │  Serves client/  │         │  bielik-11b      │
-│   by Express)   │         │  dist/ + API     │         │  via LM Studio   │
-└─────────────────┘         └──────────────────┘         └───────────────┘
-                                │
-                                ▼
-                         youtube-transcript-plus
-```
-
-| Layer | Stack |
-|---|---|---|
-| Frontend | React 18 + Vite 5 (build → static assets), dark theme CSS |
-| Backend | Node.js + Express 4, `youtube-transcript-plus` npm package |
-| LLM     | LM Studio local server (`localhost:1234`), configurable model via `.env` (default: `bielik-11b-v3.0-mlx`) |
-| Cache | In-memory Map with TTL |
-| TTS | Piper local TTS engine (Polish `justyna`, English `hfc_female`, German `thorsten`) |
-| Launch | `manage.sh` (nohup-based start/stop/restart/status); Vite dev on `:3000` is disabled |
-
-## Quickstart
-
-### Prerequisites
-
-- **Node.js** 18+ (nvm recommended)
-- **LM Studio** running locally with a model loaded at `http://localhost:1234`
-
-### Install & Run
+## Quick start
 
 ```bash
-cd /Users/radek/Documents/Projects/yt-transcript
-
-# Install dependencies
-npm install          # root (Express server)
-cd client && npm install   # frontend (Vite + React)
-
-# Build frontend (required — Express serves dist/, not Vite dev server)
-cd .. && npm run build --prefix client
-
-# Start / restart the single-port app
-chmod +x manage.sh
-./manage.sh restart
+./manage.sh start
+# Open http://localhost:4000
 ```
 
-Access the app at **http://localhost:4000**.
+For prerequisites, env vars, troubleshooting — see **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)**.
 
-> `npm run dev`, `npm run dev:client`, and `start-frontend.sh` intentionally do **not** start Vite. Port `:3000` is disabled to prevent stale Vite/HMR output diverging from the production `:4000` build.
+## Documentation
 
-### Tests
-
-```bash
-# Run all regression tests (summary parser + block-level PDF pagination)
-cd client && npm test
-```
-
-### Endpoints
-
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/health` | Health check + LM Studio status + active model + frontend build version |
-| GET | `/api/lm-status` | LM Studio model list and load status |
-| GET | `/api/build-version` | Current frontend build timestamp/SHA served by Express |
-| GET | `/api/transcript?url=<youtube-url>` | Fetch captions for a video (cached) |
-| POST | `/api/transform` | Reconstruct or summarize transcript snippets via local LLM. For `reconstruct` with `>150` snippets, auto-chunked into ~150-snippet batches |
-| POST | `/api/tts` | Generate WAV audio via local Piper TTS. Body: `{text, lang?}` |
-| GET | `/api/audio/:id` | Serve generated WAV file |
-
-**`/api/transform` request body:**
-```json
-{
-  "snippets": [{"text":"...","start":0,"duration":5}, ...],
-  "type": "reconstruct" | "summarize",
-  "mode": "original" | "translate"
-}
-```
-
-**`/api/transform` response (reconstruct):**
-```json
-{
-  "reconstructed": "... paragraph-based reconstructed text ...",
-  "snippetCount": 150,
-  "chunkCount": 1,
-  "model": "bielik-11b-v3.0-mlx"
-}
-```
-
-**`/api/transform` response (summarize):**
-```json
-{
-  "summary": "... structured sections with bold headers and paragraphs ...",
-  "snippetCount": 150,
-  "chunkCount": 1,
-  "model": "bielik-11b-v3.0-mlx"
-}
-```
-
-**`/api/tts` request body:**
-```json
-{
-  "text": "Your text to speak",
-  "lang": "pl"  // optional: "pl" | "en" | "de", autodetected if empty
-}
-```
-
-**`/api/tts` response:**
-```json
-{
-  "audioUrl": "/api/audio/pl-abc12345.wav",
-  "lang": "pl"
-}
-```
-
-### URLs
-
-| Service | Address |
+| File | Purpose |
 |---|---|
-| App (SPA + API) | `http://localhost:4000` |
-| Tailscale | `http://100.127.3.65:4000` |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | High-level design, file layout, state |
+| [docs/SECURITY_NOTES.md](docs/SECURITY_NOTES.md) | Threat model, mitigations, secret audit |
+| [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) | Honest list of what does not work |
+| [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) | Install, run, test, troubleshoot |
+| [docs/PUBLIC_DEMO_PLAN.md](docs/PUBLIC_DEMO_PLAN.md) | `transcript.radoslaw-pleskot.com` plan (not deployed) |
+| [docs/PROVIDER_MATRIX.md](docs/PROVIDER_MATRIX.md) | OpenRouter / Groq / Mistral / Ollama Cloud / oMLX comparison |
+| [CHANGELOG.md](CHANGELOG.md) | Version history |
+| [docs/legacy-server-pre-memory-fallback.js.bak](docs/legacy-server-pre-memory-fallback.js.bak) | Pre-v3.2 server snapshot (for diff archaeology) |
 
-## Project structure
+## Portfolio card (standard format)
 
-```
-yt-transcript/
-├── .env.example                    # Template: LM_STUDIO_URL, LM_STUDIO_MODEL, PORT, CACHE_TTL_MINUTES
-├── server.js                       # Express backend: transcript fetch + LM Studio proxy + TTS + static SPA serving
-├── manage.sh                       # nohup-based service manager (start/stop/restart/status)
-├── start.sh                        # Foreground launcher (kills old, builds, starts Express)
-├── start-frontend.sh               # Disabled: prints single-port workflow warning, does not start Vite :3000
-├── package.json                    # Root: Express + youtube-transcript deps
-│
-└── client/                         # React frontend (Vite → build → dist/)
-    ├── index.html
-    ├── vite.config.js              # Development only; production uses static build
-    ├── package.json
-    ├── scripts/
-    │   ├── dev-disabled.mjs          # Blocks accidental Vite dev server usage
-    │   ├── test-runner.mjs             # Runs all regression tests (pdf-pagination + summary-parser)
-    │   ├── test-summary-parser.mjs   # Regression tests for Bielik summary parsing
-    │   └── test-pdf-pagination.mjs   # Regression tests for block-level PDF pagination
-    └── src/
-        ├── api.js                    # fetchTranscript, exportToTXT/SRT helpers
-        ├── buildInfo.js              # Stable BUILD_INFO accessor; Vite injects values from vite.config.js
-        ├── hooks/useTTS.js           # useTTS hook: generate audio via /api/tts and play via Audio()
-        ├── utils/summaryParser.js      # Parses Bielik section formats into intro + sections
-        ├── utils/pdfExport.js        # Paginated PDF export: one white A4 canvas per page, markdown rendering
-        ├── App.jsx                   # Main app: URL input → transcript → language modal → AI transform → export → TTS
-        └── components/
-            ├── Header.jsx            # Logo + subtitle
-            ├── UrlInput.jsx          # URL text field + fetch button
-            ├── TranscriptPanel.jsx     # Timestamped segments with highlight
-            ├── ReconstructedPanel.jsx  # AI-reconstructed text + TTS button + copy button
-            ├── SummaryPanel.jsx        # AI summary with markdown + TTS button + copy button
-            └── ExportButtons.jsx       # TXT / SRT download buttons
-```
+- **Problem**: YouTube transcripts are useful but the auto-generated ones
+  are fragmented and noisy; reading a 30-minute video in raw segments
+  is painful.
+- **Approach**: Fetch the transcript, send it to a local LLM, and
+  produce (a) reconstructed paragraphs and (b) a bullet summary — all
+  client-side rendered, no cloud storage.
+- **Tools**: Node.js 20, Express 4, React 18, Vite 5, oMLX (local
+  OpenAI-compatible server), Piper TTS (optional), `youtube-transcript-plus`.
+- **Result**: Stable single-port prototype, resilience guardrails
+  (retry / timeout / fallback / recovery page), mobile-responsive UI,
+  PDF / Markdown / TXT / SRT export, optional 3-language TTS.
+- **Value for the organisation**: Demonstrates a privacy-respecting
+  pattern for AI-assisted content triage — the operator's transcripts
+  never leave their machine. Same shape scales to internal corporate
+  wikis, support tickets, or legal discovery.
+- **Limitations**: Single-user local prototype; TTS requires a binary
+  install; no model picker in UI; one LLM provider wired (oMLX); the
+  chunked reconstruct path from v3.2 is not yet re-introduced in the
+  oMLX M build.
+- **Privacy**: All transcripts and LLM traffic stay on the operator's
+  machine. No analytics. No outbound telemetry. No data persistence
+  beyond in-memory cache.
+- **Status**: prototype, review-ready, portfolio-ready. Public demo
+  not yet deployed (see `docs/PUBLIC_DEMO_PLAN.md`).
 
-## Development vs Production
+## Endpoints
 
-| | Development | Production |
+| Method | Path | Purpose |
 |---|---|---|
-| **Port** | `:4000` only | `:4000` only |
-| **Frontend** | Express serves `client/dist/` (static) | Express serves `client/dist/` (static) |
-| **Hot reload** | Disabled; re-run `npm run build --prefix client` after changes | Same |
-| **Vite dev server** | Disabled (`npm run dev` exits with instructions) | Not used |
-| **Cache policy** | Express sends `no-store, no-cache` for SPA and assets | Same |
-| **Build version** | Visible in UI footer and `/api/build-version` | Same |
+| GET | `/api/health` | oMLX probe + uptime + cache stats |
+| GET | `/api/build-version` | release metadata |
+| GET | `/api/transcript?url=<youtube-url>` | Fetch transcript for a URL |
+| POST | `/api/transform` | `{snippets, type, mode}` → `{reconstructed\|summary, ...}` |
+| POST | `/api/tts` | `{text, lang}` → `{audioUrl, lang}` (503 if Piper missing) |
+| GET | `/api/audio/:id` | Serve generated WAV |
+| GET | `/` | SPA (`client/dist/index.html`) or recovery page |
 
-> **Note:** Port `:3000` (Vite dev) is disabled. Always access the app via `:4000`. After any frontend change, run `npm run build --prefix client`, then `./manage.sh restart`, then refresh the browser.
+## Tests
 
-## Known Issues & TODO
+```bash
+cd client && npm test
+# 2 suites, 16 assertions, all pass.
+```
 
-### Fixed in this update
+## Configuration
 
-- **[x] Unified AI endpoint** — merged `/api/reconstruct` + `/api/summarize` into single `/api/transform` with `{type, mode}` dispatch
-- **[x] Single-port deployment** — Express on `:4000` serves both SPA (`client/dist/`) and API. Vite dev server on `:3000` is disabled in normal workflow.
-- **[x] Stale Safari/Vite cache mitigation** — Express serves SPA/assets with `no-store, no-cache`; frontend build writes a visible build footer and `/api/build-version` artifact.
-- **[x] Bielik numbered-section parser** — `summaryParser.js` converts `1) Header: paragraph 2) Header: paragraph`, `**Header:**`, and `1) **Header:**` output into semantic sections; covered by `npm run test:summary-parser --prefix client`.
-- **[x] PDF page-boundary clipping/duplication** — `pdfExport.js` replaced the old one-tall-canvas/negative-offset algorithm with block-level pagination and one white A4 canvas per PDF page; covered by `npm run test:pdf-pagination --prefix client`.
-- **[x] `youtube-transcript` package broken** → replaced with `youtube-transcript-plus` v2
-- **[x] LM Studio dependency fragile** → health check endpoint, configurable URL/model via `.env`, timeout handling
-- **[x] `cleanReasoningOutput()` regex hack** → replaced with structured output + shared `REASONING_STRIP_PATTERNS`
-- **[x] No caching** → in-memory cache with TTL for transcripts and transformations
-- **[x] Build output not served** → Express static serving for `client/dist` + SPA catch-all
-- **[x] No environment configuration** → `.env` file support via `dotenv`
-- **[x] SRT export timestamp overlap** → uses next segment start as end time
-- **[x] CSS duplicate rules** — `.reset-button`, `.export-bar`, `.empty-state`, `.video-info` deduplicated
-- **[x] Copy button fails on HTTP/Tailscale** → added `document.execCommand('copy')` fallback via invisible `<textarea>`
-- **[x] Reconstruct progress indicator missing** → added live countdown timer
-- **[x] "New Transcript" button hidden in panels** → moved to top-level `.reset-bar` above video title
-- **[x] AI buttons oversized** → font-size reduced from `1rem` to `0.875rem`
+All runtime config is env-driven; see [.env.example](.env.example).
 
-### Still open
-
-- **[ ] No error boundaries** — React errors crash the whole app. Add `ErrorBoundary` component.
-- **[ ] No video thumbnail / metadata display** — only title is shown. Add thumbnail, duration, view count.
-- **[ ] No copy-all for raw transcript** — only reconstructed/summary text has a copy button.
-- **[ ] No keyboard shortcuts** — e.g. Escape to reset, Ctrl+Enter to submit URL.
-
-### Low priority / nice-to-have (unchanged)
-
-- **[ ] Dark/light theme toggle**
-- **[ ] Multi-language support**
-- **[ ] Shareable links**
-- **[ ] History / recent searches**
-- **[ ] Mobile responsive improvements**
-
-## Troubleshooting
-
-| Problem | Likely cause | Fix |
-|---|---|---|
-| "No transcript found" on a video that has captions | Some videos don't have auto-generated captions or restrict third-party access | Try a different YouTube URL; check if the video has manual captions |
-| "LM Studio returned an error" / 502 on transform | LM Studio not running or model unloaded | Start LM Studio, load desired model, retry |
-| "Could not connect to LM Studio" | Wrong URL or port | Check `LM_STUDIO_URL` in `.env`, verify `localhost:1234` |
-| Frontend doesn't load after code changes | Express serves stale `client/dist/` | Re-run `cd client && npm run build`, then refresh browser |
-| PDF text is clipped or duplicated at page boundaries | Stale build or old one-canvas PDF algorithm still served | Run `npm run build --prefix client`, restart with `./manage.sh restart`, then verify `/api/build-version` changed |
-| Port already in use | Previous instance still running | `lsof -ti:4000 | xargs kill` |
+- `OMLX_URL`, `OMLX_MODEL`, `OMLX_API_KEY` (optional)
+- `PORT` (default 4000)
+- `CACHE_TTL_MINUTES` (default 60)
+- `PIPER_BIN`, `PIPER_MODELS_DIR` (optional)
 
 ## License
 
-Private / personal project.
+Personal prototype. No public license declared yet — see
+`docs/PUBLIC_DEMO_PLAN.md` for the future direction.

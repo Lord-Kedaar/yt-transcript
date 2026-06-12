@@ -1,326 +1,61 @@
 # Changelog
 
-## v3.2 — 2026-05-21
+## 3.2.1 — 2026-06-12
+
+### Security
+- **Removed hardcoded API key fallback** — the `'0456'` literal in
+  `OMLX_API_KEY = ... || '0456'` was a real-world anti-pattern
+  (BURDEL rule: no secrets in repo). The fallback is now an empty
+  string; operators must set the key in `.env` if their oMLX
+  requires auth.
 
 ### Added
-
-- **Text-to-Speech (TTS) via Piper** — backend endpoint `POST /api/tts` generates WAV audio via local Piper TTS engine; `GET /api/audio/:id` serves generated files. Three voices installed: Polish `pl` (Justyna), English `en` (hfc_female), German `de` (thorsten). Auto-detects language from text; accepts explicit `lang` parameter.
-- **Read Aloud button** — speaker (🔊) icon in `ReconstructedPanel` and `SummaryPanel` headers; click generates and plays audio via `useTTS.js` hook. Auto-detects language from content or uses modal choice (`original`/`translate`).
-- **PDF markdown rendering** — `pdfExport.js` now renders inline markdown (`**bold**`, `*italic*`, `- ` lists, `> ` blockquotes) in PDF output via `html2canvas` innerHTML, not stripped plain text.
-- **Chunked Reconstruct for long transcripts** — transcripts with >150 snippets are automatically split into overlapping ~150-snippet chunks, each processed sequentially by LLM, then merged. Prevents truncation caused by model token limits.
-- **Piper integration** — `server.js` includes `PIPER_BIN` and `PIPER_MODELS_DIR` configuration; `TTS_VOICES` map supports `pl` (Justyna), `en` (hfc_female), `de` (thorsten).
-
-### Changed
-
-- **Reconstruct prompt** — removed the "introduce author/topic" instruction from userSuffix. System prompt now requires `Output the FULL reconstructed text from beginning to end; never truncate mid-sentence`. No intro paragraph.
-- **Prompt wrapping** — transcript text is wrapped in `=== TRANSCRIPT ===` / `=== END ===` markers so the model doesn't interpret userSuffix as part of the transcript.
-- **Response format** — `/api/transform` `reconstruct` now returns `chunkCount` field (number of chunks processed).
-- **`.gitignore`** — fixed broken pattern `*.backup-*logs/` → `*.backup-*` and `logs/` on separate lines.
-
-### Fixed
-
-- **Reconstruct truncation on long videos** — root cause was model 32K token limit exceeded by large input. Fixed with chunking.
-- **413 Payload Too Large** — `express.json()` limit increased to 50 MB. Included in v3.1.1 but also applicable here.
-- **PDF export double `.wav` extension** — `/api/audio/:id` route now strips duplicate `.wav` from `req.params.id`.
-- **TTS generation timeout** — `generateTTS()` now kills Piper process after 120s if it hangs, returning HTTP 500 with clear error.
-- **TTS cache accumulation** — server startup cleans WAV files older than 24h from `/tmp/tts-cache/`.
-- **README accuracy + unified test runner** — updated README to reflect current state: 3 TTS voices (PL/EN/DE), language choice modal flow, `/api/transform` summarize response example, `.env.example` and `scripts/` in project structure, stale "No transcript found" troubleshooting, `/api/health` buildVersion field. Fixed `summaryParser.js` description. Added `test-runner.mjs` (+ `npm test` in `client/package.json`) that runs both `test-summary-parser.mjs` and `test-pdf-pagination.mjs` with collected pass/fail output.
-- **Dead code** — removed `clearCache()` (server.js, never called), unused `useEffect` import (UrlInput.jsx), and unused `stop()` method (useTTS hook, never invoked).
-- **Dead CSS** — removed `.auto-badge`, `.reset-button`, and `.reset-panel-button` rules (orphaned classes from earlier UI iterations, no longer referenced in JSX).
-- **`/api/health` buildVersion null** — root cause: `/api/health` endpoint was not reading `build-version.json` at all (`buildVersion` was hardcoded `null`); `DIST_DIR`/`BUILD_VERSION_FILE` declarations were later in file and also duplicated. Fixed by hoisting path constants to top of file and adding read of `build-version.version` to `/api/health`.
-- **Summarize always Polish** — base `summarize` system prompt hardcoded `"ALL output MUST be in Polish"` regardless of mode; `userSuffix` translate instruction was only injected for `reconstruct`, never for `summarize`. Fixed by removing hardcoded Polish from base prompt and applying translate `userSuffix` to both `reconstruct` and `summarize`.
-- **Modal text incorrect for summarize** — language choice modal always displayed `"Reconstruct in the language of the transcript"` even when user clicked "Summarize with AI". Fixed by switching to dynamic text based on `modalAction`.
-
-## v3.1 — 2026-05-21
-
-### Added
-
-- **Shared PDF export utility** — `client/src/utils/pdfExport.js` centralizes block-level pagination, measurement, page rendering, and blob download. One white A4 DOM/canvas per PDF page avoids clipping/duplication at boundaries.
-- **Bielik summary parser** — `client/src/utils/summaryParser.js` parses section formats: numbered headers (`1) Header:`), bold headers (`**Header:**`), combined (`1) **Header:**`), and same-line inline sections.
-- **Regression tests** — `test:pdf-pagination` (5 assertions) and `test:summary-parser` (9 assertions) runnable via `npm run` in `client/`.
-- **Build versioning** — `client/vite.config.js` injects `BUILD_INFO` and writes `client/public/build-version.json`; UI footer displays SHA/timestamp/port.
-- **Runtime build visibility** — backend serves `GET /api/build-version` from the same artifact.
-- **Wstępny akapit w podsumowaniu** — każdy summary zaczyna się 3-5 zdaniowym wprowadzeniem identyfikującym autora/speaker i temat wideo.
-- **Menu eksportu Save** — dropdown z 3 opcjami: 💾 TXT, 📝 MD, 📄 PDF.
-- **Markdown emphasis natively rendered** — `parseInlineMarkdown()` konwertuje `**text**` → `<strong>`, `*text*` → `<em>`.
-- **CSS `.summary-intro`** — wyróżniony wstęp akapitu kolorowym lewym borderem.
-- **CSS `.summary-section`, `.summary-section-header`, `.summary-paragraph`** — section-based rendering layout.
+- **TTS endpoint restored** — `POST /api/tts` and `GET /api/audio/:id`
+  were missing from the oMLX migration; the frontend hook
+  (`useTTS.js`) was calling an endpoint that didn't exist. Implemented
+  Piper integration with graceful degradation: when `PIPER_BIN` does
+  not exist, the endpoint returns 503 with a clear hint instead of
+  crashing the server.
+- **Path-traversal guard** on `/api/audio/:id` — the id must match
+  `^[A-Za-z0-9-]+$` before any filesystem access.
+- **TTS cache cleanup on startup** — WAV files older than 24h in
+  `/tmp/tts-cache/` are removed (matches v3.2 behaviour).
+- **Documentation set** — `docs/ARCHITECTURE.md`, `docs/SECURITY_NOTES.md`,
+  `docs/KNOWN_LIMITATIONS.md`, `docs/LOCAL_SETUP.md`,
+  `docs/PUBLIC_DEMO_PLAN.md`, `docs/PROVIDER_MATRIX.md`.
+- **`.env.example` updated** — now includes `PIPER_BIN` and
+  `PIPER_MODELS_DIR`; documents the `LM_STUDIO_*` legacy aliases.
 
 ### Changed
-
-- **PDF export architecture** — replaced the old one-tall-html2canvas bitmap reused with negative Y offsets with block-level pagination. Preserves Polish glyphs via browser rasterization.
-- **SummaryPanel / ReconstructedPanel** — both call shared `exportBlocksToPdf()`; removed duplicated PDF generation logic.
-- **SummaryPanel rendering** — replaced inline bullet regex with `parseSummarySections()` from `summaryParser.js`; now renders sections with bold headers + paragraphs.
-- **Prompt UX** — summarize `userSuffix` now requests structured sections (`**Theme:**` + paragraph) instead of `- ` bullet points.
-- **Model** — `qwen3.5-9b-mlx-lm-nvfp4` → `bielik-11b-v3.0-mlx` (better Polish prose quality, despite lower prompt obedience).
-- **Prompts aggressively enforce Polish** — `userSuffix` contains `CRITICAL: ALL content must be in Polish.` in both reconstruct and summarize.
-- **Summary intro adapted for Bielik** — Bielik produces intro as first bullet; `SummaryPanel` treats first bullet as intro when no plain intro exists.
-- **Express static serving** — returns `Cache-Control: no-store, no-cache, must-revalidate, proxy-revalidate` plus `Pragma`, `Expires`, and `Surrogate-Control`.
-- **Vite workflow** — `npm run dev`, `npm run dev:client`, and `start-frontend.sh` no longer start Vite on `:3000`; they print the single-port `:4000` workflow and exit.
-- **Vite fallback port** — moved from `3000` to strict `4001` to avoid ambiguity with production `4000`.
-- **Summary / Reconstruct button font sizes reduced** — `0.8rem` desktop, `0.75rem` mobile.
-- **Header regex relaxed** — handles `1) **Nagłówek:**` in addition to plain `**Nagłówek:**`.
-
-### Fixed
-
-- **PDF page-boundary clipping/duplication** — text no longer gets cut and repeated around page breaks.
-- **Reconstructed PDF dark background** — reconstructed exports now use the same white-page renderer as summaries.
-- **PDF saved as `export.pdf`** — Safari ignored `pdf.save(filename)`; now uses blob + `<a download>` link.
-- **Inconsistent intro rendering** — handles both Bielik-style (first bullet = intro) and Qwen-style (plain intro paragraph).
-- **Bielik numbered sections rendered as one wall of text** — parser splits `1) Header: ... 2) Header: ...` even when emitted on one physical line.
-- **Stale `:4000` vs fresh `:3000` confusion** — cache clearing + no-store headers + disabled dev scripts make `:4000` the only supported runtime path.
-
-### v3.1.1 — 2026-05-21
-
-### Fixed
-
-- **413 Payload Too Large on long videos** — `express.json()` default 100 KB limit caused `JSON.parse` errors when summarizing/reconstructing transcripts >100 KB. Increased limit to 50 MB to handle long-form YouTube content.
-
-### Dependencies
-
-- `jspdf` + `html2canvas` — generowanie PDF z frontendu.
-
----
-
-## [2026-05-21] — Model swap to qwen3.5-9b-mlx-lm-nvfp4 + markdown rendering + Polish enforcement
-
-### Changed
-
-- **Model:** `bielik-11b-v3.0-mlx` → `qwen3.5-9b-mlx-lm-nvfp4` (faster, cleaner output, better prompt obedience).
-- **Prompts now allow markdown** — system prompt encourages `**bold**` and `*italic*` for emphasis.
-- **SummaryPanel renders markdown inline** — `parseInlineMarkdown()` converts `**text**` → `<strong>`, `*text*` → `<em>`.
-- **Smaller button fonts** — `.reconstruct-button` / `.summarize-button` reduced from `0.875rem` → `0.8rem`, mobile breakpoint `0.85rem` → `0.75rem`.
-- **Stronger Polish translation enforcement** — `summarize` system prompt explicitly states `ALL output MUST be in Polish`. Reconstruct adds tail instruction when translate mode is active.
-
-### Fixed
-
-- **Inconsistent Polish output from bielik** — qwen translates reliably in both reconstruct and summarize modes.
-- **Markdown bold appearing as plain text** — now rendered as styled `<strong>` / `<em>` in the UI.
-
----
-
-## [2026-05-19] — LLM prompt echo + markdown cleanup in summaries
-
-### Fixed
-
-- **LLM echo prompt in summary output** — model reproduced fragments of the system prompt as bullets. Shortened system prompt from 17 lines to 7 lines and moved format constraints (`"each bullet starts with - "`) to `userPrompt` tail for stronger anchoring.
-- **Markdown bold leaking into UI** — model wrapped bullet titles in `**text**`. Added prompt rule `"Do NOT use markdown bold (**) or headers"`.
-- **Defensive frontend strip** — `SummaryPanel.jsx` now strips `**bold**` and `## headers` via regex post-processing as safety net.
-
-### Changed
-
-- Summarize prompt structure: system → short role definition, userPrompt → raw text + explicit format tail.
-
----
-
-## [2026-05-19] — Single-port deployment: Express serves SPA + API on :4000
-
-### Changed
-
-- **Eliminated dual-port development setup** — previously frontend ran on Vite dev server (`:3000`) proxying to Express backend (`:4000`). Now Express on `:4000` serves both the static SPA (`client/dist/`) and the API.
-- **Rewrote `manage.sh`** — simplified from dual-process (backend + frontend) to single-process launcher. No PID tracking for two services.
-- **Rewrote `start.sh`** — builds `client/dist/` via `npm run build`, then launches Express in foreground.
-- **Updated `server.js` console output** — removed hardcoded `:3000` references from startup log.
-- **Updated `README.md`** — single-port architecture diagram, unified "Development vs Production" section, removed all references to port `:3000`.
-
-### Removed
-
-- **Vite dev server (`:3000`)** no longer used. After any frontend change, run `cd client && npm run build`, then refresh the browser.
-- **Dual-process `manage.sh`** complexity eliminated.
-
----
-
-## [2026-05-19] — API refactor: unified /api/transform endpoint
-
-### Changed
-
-- **Merged `/api/reconstruct` + `/api/summarize` into `/api/transform`** — single unified `POST /api/transform` endpoint accepting `{snippets, type, mode}` where `type` is `"reconstruct" | "summarize"`.
-- **De-duplicated backend code** — replaced two near-identical 180-line handlers with one configurable handler + shared prompt library (`TRANSFORM_PROMPTS`).
-- **De-duplicated frontend state** — replaced `reconstructing/summarizing`, `reconstructProgress/summaryProgress`, `reconstructedText/summaryText`, and separate `handleReconstruct`/`handleSummarize` functions with unified `aiLoading`, `aiProgress`, `handleTransform()`, and derived `isReconstructing`/`isSummarizing` flags.
-- **Shared reasoning cleanup** — extracted regex strip patterns into `REASONING_STRIP_PATTERNS` constant array; applied to both reconstruct and summarize output.
-- **Cache key unified** — single `${type}:base64hash` pattern instead of separate `reconstruct:` / `summarize:` prefixes.
-
-### Removed
-
-- **Old endpoints** — `/api/reconstruct` and `/api/summarize` removed. Single-user project; backward compatibility broken intentionally. All frontend traffic now routes to `/api/transform`.
-- **88 lines net deleted** (243 removed, 155 added) across `server.js` + `App.jsx`.
-
----
-
-## [2026-05-19] — UI fixes: New Transcript position + AI button font size
-
-### Fixed
-
-- **"New Transcript" button moved from panels to top-level** — previously hidden inside `ReconstructedPanel` and `SummaryPanel`, making it unreachable when those panels were not yet rendered. Now placed above the video title as a subtle `.reset-bar` with `.reset-app-button`.
-- **Removed duplicate reset buttons from panels** — `ReconstructedPanel.jsx` and `SummaryPanel.jsx` no longer include `onReset` prop or the old `.reset-panel-button`. Clean state reset still handled by `App.jsx` `handleReset()` with `AbortController` cancellation.
-
-### Changed
-
-- **AI button font size reduced** — `.reconstruct-button` and `.summarize-button` changed from `font-size: 1rem` to `0.875rem` for visual consistency with surrounding UI.
-
----
-
-## [2026-05-18] — Language Choice Modal + AbortController + New Transcript
-
-### Added
-
-- **Language Choice Modal** — clicking "Reconstruct with AI" or "Summarize with AI" now opens a modal with two options:
-  - **"Keep original language"** — reconstruct/summarize in the transcript's native language.
-  - **"Translate to Polish"** — reconstruct/summarize and translate output into Polish via LLM.
-  - Backend endpoints `/api/reconstruct` and `/api/summarize` accept optional `mode` field (`'original' | 'translate'`).
-  - Polish translation instruction appended to system prompt: "Translate the entire reconstructed text into Polish (język polski)."
-
-- **AbortController for AI requests** — clicking "New Transcript" (formerly "New Search") now cancels any in-flight `reconstruct` or `summarize` HTTP requests, stops progress timers, and resets state cleanly.
-  - Added `reconstructAbortRef` and `summarizeAbortRef` refs holding `AbortController` instances.
-  - `handleReset()` now aborts pending requests and resets UI state to idle.
-  - Both `reconstruct` and `summarize` handlers create new `AbortController` per call and detect `AbortError`.
-
-### Changed
-
-- **"New Search" → "New Transcript"** — renamed button title and label in `ReconstructedPanel` and `SummaryPanel`.
-- **Grid fix** — `grid-template-columns: 1fr 1fr` → `minmax(0, 1fr) minmax(0, 1fr)` in `.action-buttons` to prevent button overflow.
-
----
-
-## [2026-05-18] — Summarize endpoint + prompt v3.0
-
-### Added
-
-- **`/api/summarize` endpoint** — generates comprehensive, detailed bullet-point summaries from transcript snippets using LM Studio.
-  - Model: `bielik-11b-v3.0-mlx` (32K context, local).
-  - Prompt v3.0: comprehensive, detailed coverage of ALL major themes with substantive 2-3 sentence bullets (~30-50 words each).
-  - `max_tokens: 32768`, `timeout: 1800s` for long transcripts.
-
-### Changed
-
-- **Summarize prompt v3.0** — removed rigid "Minimum 8 / Maximum 15" fake constraint (Bielik 11B did not respect it). Replaced with quality-first instruction: "Do NOT be brief or stop early — every significant thread deserves its own substantive bullet."
-- **Summarize `max_tokens`** — `8192 → 32768` (full model capacity).
-- **Summarize `timeout`** — `900000ms → 1800000ms` (30 min, scales linearly with token budget).
-
----
-
-## [2026-05-18] — Emergency stability fixes
-
-### Fixed
-
-- **Reconstruct timeout for long videos** — `youtube-transcript-plus` returns ~700 snippets for 20-minute videos; sending all 700 to `qwen3.6-35b-a3b-mlx-nvfp4` in one prompt causes 30+ minute inference and `AbortSignal.timeout(120s)` error (`curl rc=28`).
-  - Backend now caps snippets at **300** before sending to LM Studio (still covers ~10–15 min of speech).
-  - Backend timeout bumped from **120s → 600s** (10 min) to accommodate slow local inference.
-  - Result: URL `https://youtu.be/hGnn05ccwNc` (Hermes Agent) now reconstructs in ~156s instead of crashing.
-- **Frontend error UX during reconstruct** — added live countdown timer (`AI reconstructing... (42s)`) so users know the process is running, not hung. Previous "Could not connect to LM Studio" error was stale from prior timeout, not actual LM failure.
-- **Clear stale errors** — clicking "Reconstruct with AI" now clears old error banner before starting new request.
-- **Reconstruct crashes on Unicode/emoji** — `btoa()` in cache key threw `InvalidCharacterError` when transcript text contained emojis (e.g. "🤯" in video title). This error was caught by `catch(err)` and replaced with misleading "Could not connect to LM Studio." message. Fixed by switching to `Buffer.from(text).toString('base64')` which handles UTF-8 correctly.
-- **Reconstruct returns raw markdown code block** — LM Studio occasionally wraps JSON in ```json ... ``` markdown. Backend now strips code fence markers before `JSON.parse()`.
-- **Reconstruct empty content from reasoning model** — when LM Studio returns empty `msg.content` but non-empty `msg.reasoning_content`, the backend now falls back to reasoning text and extracts JSON from it.
-
----
-
-## [2026-05-18] — Copy button fix + reasoning cleanup
-
-### Fixed
-
-- **Copy button in Reconstructed Panel** — `navigator.clipboard.writeText()` fails on HTTP/Tailscale due to browser security requiring secure context (`navigator.clipboard` is `undefined` on insecure origins). Added `document.execCommand('copy')` fallback via invisible `<textarea>` element. Button now works across HTTP, Tailscale, and localhost.
-- **Reconstruct output polluted with reasoning metadata** — model `qwen3.6-35b-mlx` in reasoning mode consumed entire `max_tokens: 8192` on internal monologue (8191/8192 = reasoning tokens), leaving ~1 token for output. Result was truncated raw reasoning text full of "*Paragraph N:*", "*Self-Correction:*", "Let's draft it carefully." instead of reconstructed transcript.
-  - **Prompt simplification**: removed JSON wrapper from system prompt — model now outputs plain paragraphs directly (smaller reasoning footprint).
-  - **Token increase**: `max_tokens: 8192 → 12000`.
-  - **Post-processing**: aggressive regex stripping of reasoning meta-commentary ("Here's a thinking process:", "**Analyze User Input:**", "Paragraph N:", "Self-Correction", etc.).
-  - **Result**: Hermes Agent video now reconstructs to 11,913 clean characters in ~211s, zero reasoning artifacts.
-
----
-
-## [Updated] — Backend infrastructure rewrite + frontend fixes
-
-### Changed
-
-- **Replaced `youtube-transcript` with `youtube-transcript-plus`** — addresses broken API compatibility that caused "transcript not available" on many videos.
-- **Added `.env` configuration** — `PORT`, `LM_STUDIO_URL`, `LM_STUDIO_MODEL`, `CACHE_TTL_MINUTES` all configurable via environment variables.
-- **Added `LM Studio health check`** — `/api/lm-status` endpoint; `/api/health` now includes LM Studio connection status and model name.
-- **Added in-memory cache** — transcript fetches and reconstructions cached with TTL (default 60 min), keyed by video ID and snippet hash.
-- **Replaced `cleanReasoningOutput()` regex hack** — structured JSON output (`{"output": "..."}`) from LM Studio; removed 35 lines of brittle regex.
-- **Added production static serving** — Express now serves `client/dist/` and handles SPA routing in production.
-- **Improved error handling** — 503 if LM Studio unreachable; 502 on LM error; `AbortSignal.timeout(120s)` on reconstruction fetch.
-- **Fixed SRT end timestamps** — uses next segment start instead of `start + duration` to prevent overlap.
-- **Deduplicated CSS** — removed duplicate rules for `.reset-button`, `.export-bar`, `.empty-state`, `.video-info`.
-- **Fixed timestamp field mapping** — `youtube-transcript-plus` returns `offset` not `start` in segment objects.
-
-### Fixed
-
-- Core transcription pipeline now works reliably with `youtube-transcript-plus` v2.
-- LM Studio integration is observable and debuggable.
-- Production build output is now served by Express.
-
-### Known Issues (remaining)
-
-- No error boundaries in React.
-- No video thumbnail / metadata beyond title.
-
----
-
-## [Unreleased] — Initial development
-
-### Added
-
-- **YouTube transcript extraction** — `/api/transcript` endpoint using `youtube-transcript` npm package; parses video URL (watch, embed, shorts formats), returns snippets with timestamps and full text.
-- **AI reconstruction endpoint** — `/api/reconstruct` POST sends fragmented transcript snippets to LM Studio (`qwen3.6-35b-a3b-mlx-nvfp4`) for merging into readable paragraphs.
-- **`cleanReasoningOutput()`** — strips thinking-process markers from qwen's `reasoning_content` output (regex-based cleanup of numbered steps, bullet points, partial sentences).
-- **React frontend** — dark-themed UI with URL input, timestamped transcript panel (hover/click highlight), AI-reconstructed text panel (with copy button and paragraph/character counts), export buttons (TXT, SRT).
-- **Export to TXT / SRT** — client-side blob download for plain text and subtitle formats.
-- **macOS LaunchAgent management** — `manage.sh` for start/stop/restart/status via `launchctl`; `start.sh` for foreground development.
-- **Tailcale networking** — server binds to `0.0.0.0`, accessible at `100.127.3.65:4000` (API) and `100.127.3.65:3000` (frontend).
-
-### Changed
-
-- None — initial project scaffold.
-
-### Fixed
-
-- None — initial project scaffold.
-
----
-
-## What didn't work (historical — all resolved)
-
-> This section documents the original pain points from the initial scaffold. All have been resolved in subsequent releases above.
-
-### 1. `youtube-transcript` package broken — **RESOLVED**
-- **Fix:** Replaced with `youtube-transcript-plus` v2.
-- **Where:** See `[Updated] — Backend infrastructure rewrite`.
-
-### 2. LM Studio integration fragile — **RESOLVED**
-- **Fix:** Added `/api/health`, `/api/lm-status`, `.env` configuration (`LM_STUDIO_URL`, `LM_STUDIO_MODEL`), `AbortSignal.timeout()`.
-- **Where:** See `[Updated] — Backend infrastructure rewrite`.
-
-### 3. `cleanReasoningOutput()` regex hack — **RESOLVED**
-- **Fix:** Switched to structured JSON output, then plain text with aggressive meta-commentary stripping.
-- **Where:** See `[2026-05-18] — Copy button fix + reasoning cleanup`.
-
-### 4. No caching — **RESOLVED**
-- **Fix:** In-memory `Map` cache with TTL (default 60 min) for transcripts and reconstructions.
-- **Where:** See `[Updated] — Backend infrastructure rewrite`.
-
-### 5. Build output not served — **RESOLVED**
-- **Fix:** `app.use(express.static(...))` + SPA catch-all route in production.
-- **Where:** See `[Updated] — Backend infrastructure rewrite`.
-
-### 6. No environment configuration — **RESOLVED**
-- **Fix:** `.env` support via `dotenv`, all tunables (PORT, LM_STUDIO_URL, LM_STUDIO_MODEL, CACHE_TTL_MINUTES).
-- **Where:** See `[Updated] — Backend infrastructure rewrite`.
-
-### 7. CSS duplicate rules — **RESOLVED**
-- **Fix:** Deduplicated `.reset-button`, `.export-bar`, `.empty-state`, `.video-info`.
-- **Where:** See `[Updated] — Backend infrastructure rewrite`.
-
----
-
-## Priority summary (remaining open items)
-
-| Priority | Issue | Impact |
-|---|---|---|
-| **P2** | No error boundaries in React | App crash on component error |
-| **P2** | No video thumbnail / metadata beyond title | Poor UX |
-| **P2** | No copy-all for raw transcript | UX gap |
-| **P2** | No loading state for reconstruction | User uncertainty |
-| **P2** | No keyboard shortcuts | Accessibility |
-| **P3** | Dark/light theme toggle | Nice-to-have |
-| **P3** | Multi-language support | Nice-to-have |
-| **P3** | Shareable links | Nice-to-have |
+- **README rewritten** — now points to `docs/` for deep dives and
+  includes the portfolio card (problem / approach / tools / result /
+  value / limitations / privacy / status).
+- **.env.example clarified** — oMLX is the primary; LM Studio is
+  documented as legacy fallback aliases.
+
+### Cleanup
+- Removed 7 stale `*.bak.*` files from earlier debug sessions.
+- Removed `.write-test` and `.write-test-2` scratch files.
+- Removed `package 2.json` (a typo'd duplicate).
+- Moved `server.js.bak.20260608_132834.pre-memory-fallback` to
+  `docs/legacy-server-pre-memory-fallback.js.bak` for archaeology.
+
+## 3.2.0 — 2026-06-08
+
+### Frontend loading feedback and Safari resume recovery
+- AI reconstruction and summarization now show an animated progress indicator plus a live seconds counter while work runs.
+- In-flight AI jobs are persisted across Safari/background-tab suspension and restored on return, preventing the summary/reconstruction crash path.
+- oMLX transform requests now retry with smaller fallback models when the primary model is rejected by memory pressure.
+
+### Hardened startup and error handling
+- `npm start` now runs the build step before starting the backend.
+- `manage.sh start` and `start.sh` now use the canonical build-first launch path.
+- `server.js` retries transient transcript and oMLX failures instead of failing immediately.
+- JSON request bodies are accepted up to 16 MB to reduce accidental 413 errors on large transcripts.
+- Missing frontend build artifacts now return a recovery page instead of crashing the server.
+- Unhandled exceptions, rejections, and listen errors are logged and shut down cleanly.
+- launchd stdout/stderr now go to `/tmp/yt-transcript/` instead of the project tree, avoiding filesystem deadlocks in the supervisor path.
+
+### Operational notes
+- The app remains single-port on `:4000`.
+- Health responses now distinguish `ok` from `degraded` when oMLX is temporarily unavailable.
