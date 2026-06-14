@@ -14,17 +14,17 @@ The app is a personal local prototype. Primary threats:
 
 ## Mitigations in place
 
-| Threat | Control | Where |
-|---|---|---|
-| Secret leakage | `.env` is gitignored, `.env.example` is empty for keys | `.gitignore`, `server.js` line 23 |
-| Path traversal on `/api/audio/:id` | id must match `^[A-Za-z0-9-]+$` | `server.js` (TTS section) |
-| Missing oMLX key | When `OMLX_API_KEY` is empty, no `Authorization` header is sent (oMLX allows this) | `server.js` transform + probe |
-| Crash from oMLX being down | `/api/health` returns `degraded`; `/api/transform` returns 502 | `server.js` |
-| Unbounded body size | `express.json({ limit: '16mb' })` | `server.js` |
-| CORS | `cors({ origin: '*' })` — open for local use; restrict before public deploy | `server.js` |
-| `x-powered-by` | disabled | `server.js` |
-| X-Content-Type-Options | `nosniff` on all responses | `server.js` |
-| Unhandled exception | logged + clean shutdown (supervisor restart) | `server.js` |
+| Threat                             | Control                                                                            | Where                             |
+| ---------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------- |
+| Secret leakage                     | `.env` is gitignored, `.env.example` is empty for keys                             | `.gitignore`, `server.js` line 23 |
+| Path traversal on `/api/audio/:id` | id must match `^[A-Za-z0-9-]+$`                                                    | `server.js` (TTS section)         |
+| Missing oMLX key                   | When `OMLX_API_KEY` is empty, no `Authorization` header is sent (oMLX allows this) | `server.js` transform + probe     |
+| Crash from oMLX being down         | `/api/health` returns `degraded`; `/api/transform` returns 502                     | `server.js`                       |
+| Unbounded body size                | `express.json({ limit: '16mb' })`                                                  | `server.js`                       |
+| CORS                               | `cors({ origin: '*' })` — open for local use; restrict before public deploy        | `server.js`                       |
+| `x-powered-by`                     | disabled                                                                           | `server.js`                       |
+| X-Content-Type-Options             | `nosniff` on all responses                                                         | `server.js`                       |
+| Unhandled exception                | logged + clean shutdown (supervisor restart)                                       | `server.js`                       |
 
 ## Findings from 2026-06-12 audit
 
@@ -69,17 +69,17 @@ the operator's responsibility.
 
 ## Dependency surface
 
-| Package | License | Notes |
-|---|---|---|
-| `express` | MIT | standard |
-| `cors` | MIT | standard |
-| `dotenv` | BSD-3-Clause | standard |
-| `he` | MIT | HTML entity decoder |
-| `youtube-transcript-plus` | MIT | third-party YouTube transcript fetcher |
-| `react`, `react-dom` | MIT | frontend |
-| `vite`, `@vitejs/plugin-react` | MIT | build |
-| `jspdf`, `html2canvas` | MIT | PDF export |
-| `@testing-library/*`, `jest` | MIT | tests (yt client) |
+| Package                        | License      | Notes                                  |
+| ------------------------------ | ------------ | -------------------------------------- |
+| `express`                      | MIT          | standard                               |
+| `cors`                         | MIT          | standard                               |
+| `dotenv`                       | BSD-3-Clause | standard                               |
+| `he`                           | MIT          | HTML entity decoder                    |
+| `youtube-transcript-plus`      | MIT          | third-party YouTube transcript fetcher |
+| `react`, `react-dom`           | MIT          | frontend                               |
+| `vite`, `@vitejs/plugin-react` | MIT          | build                                  |
+| `jspdf`, `html2canvas`         | MIT          | PDF export                             |
+| `@testing-library/*`, `jest`   | MIT          | tests (yt client)                      |
 
 No native dependencies. No analytics. No outbound telemetry. No third-party
 fonts or CDNs loaded at runtime beyond what's bundled by Vite.
@@ -87,6 +87,7 @@ fonts or CDNs loaded at runtime beyond what's bundled by Vite.
 ## Logging
 
 Logs go to:
+
 - `console.log` / `console.error` on stdout/stderr (terminal)
 - `/tmp/yt-transcript/server.log` and `server.err` when started via `manage.sh`
 

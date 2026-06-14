@@ -21,11 +21,14 @@ test('paginateMeasuredBlocks moves overflowing block to next page without duplic
 
   const pages = paginateMeasuredBlocks(blocks, { availableHeight: 100 });
 
-  assert.deepEqual(pages.map((page) => page.map((block) => block.id)), [
-    ['a', 'b'],
-    ['c'],
-  ]);
-  assert.deepEqual(pages.flat().map((block) => block.id), ['a', 'b', 'c']);
+  assert.deepEqual(
+    pages.map(page => page.map(block => block.id)),
+    [['a', 'b'], ['c']],
+  );
+  assert.deepEqual(
+    pages.flat().map(block => block.id),
+    ['a', 'b', 'c'],
+  );
 });
 
 test('paginateMeasuredBlocks keeps over-tall single block once instead of looping', () => {
@@ -36,23 +39,20 @@ test('paginateMeasuredBlocks keeps over-tall single block once instead of loopin
 
   const pages = paginateMeasuredBlocks(blocks, { availableHeight: 100 });
 
-  assert.deepEqual(pages.map((page) => page.map((block) => block.id)), [
-    ['huge'],
-    ['next'],
-  ]);
+  assert.deepEqual(
+    pages.map(page => page.map(block => block.id)),
+    [['huge'], ['next']],
+  );
 });
 
 test('summaryToPdfBlocks creates intro, section headers, and paragraphs from Bielik summary', () => {
   const raw = 'Wstęp filmu.\n\n1) Wprowadzenie: Pierwszy akapit. 2) Energia: Drugi akapit.';
   const blocks = summaryToPdfBlocks(raw);
 
-  assert.deepEqual(blocks.map((block) => block.type), [
-    'intro',
-    'sectionHeader',
-    'paragraph',
-    'sectionHeader',
-    'paragraph',
-  ]);
+  assert.deepEqual(
+    blocks.map(block => block.type),
+    ['intro', 'sectionHeader', 'paragraph', 'sectionHeader', 'paragraph'],
+  );
   assert.equal(blocks[1].text, 'Wprowadzenie');
   assert.equal(blocks[3].text, 'Energia');
 });

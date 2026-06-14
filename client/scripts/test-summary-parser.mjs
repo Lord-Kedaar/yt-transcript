@@ -42,7 +42,8 @@ test('parses numbered bold headers', () => {
 });
 
 test('captures intro text before first section', () => {
-  const raw = 'To jest wstęp do filmu. Autor omawia tematykę.\n\n1) Wprowadzenie: Pierwszy punkt.\n2) Ateizm: Drugi punkt.';
+  const raw =
+    'To jest wstęp do filmu. Autor omawia tematykę.\n\n1) Wprowadzenie: Pierwszy punkt.\n2) Ateizm: Drugi punkt.';
   const result = parseSummarySections(raw);
 
   assert.equal(result.intro, 'To jest wstęp do filmu. Autor omawia tematykę.');

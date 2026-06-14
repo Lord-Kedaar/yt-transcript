@@ -13,12 +13,14 @@
  */
 
 function normalizeSummaryText(rawText = '') {
-  return String(rawText)
-    .replace(/\r\n/g, '\n')
-    .replace(/\r/g, '\n')
-    .trim()
-    // Split inline numbered sections before parsing, without touching decimals.
-    .replace(/([^\n])\s+((?:\d+[.)])\s+(?:\*\*[^*\n]{1,120}:\*\*|[^:\n]{2,120}:))/g, '$1\n$2');
+  return (
+    String(rawText)
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .trim()
+      // Split inline numbered sections before parsing, without touching decimals.
+      .replace(/([^\n])\s+((?:\d+[.)])\s+(?:\*\*[^*\n]{1,120}:\*\*|[^:\n]{2,120}:))/g, '$1\n$2')
+  );
 }
 
 function stripListPrefix(line) {
@@ -30,7 +32,9 @@ function parseHeaderLine(line) {
 
   // Numbered or bold section headers are accepted. Plain unnumbered `Foo:` is
   // intentionally NOT accepted, because intro paragraphs often contain colons.
-  const match = trimmed.match(/^(?:[-*]\s+)?(?:(\d+)[.)]\s*)?(?:\*\*([^*\n]{1,120}?):\*\*|([^:\n]{2,120}?):)\s*(.*)$/);
+  const match = trimmed.match(
+    /^(?:[-*]\s+)?(?:(\d+)[.)]\s*)?(?:\*\*([^*\n]{1,120}?):\*\*|([^:\n]{2,120}?):)\s*(.*)$/,
+  );
   if (!match) return null;
 
   const [, numberPrefix, boldHeader, plainHeader, rest = ''] = match;
@@ -51,7 +55,7 @@ export function parseSummarySections(rawText = '') {
 
   const lines = normalized
     .split('\n')
-    .map((line) => line.trim())
+    .map(line => line.trim())
     .filter(Boolean);
 
   const introParts = [];

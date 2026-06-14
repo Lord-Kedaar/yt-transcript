@@ -5,10 +5,7 @@ import path from 'path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const TEST_SCRIPTS = [
-  'test-summary-parser.mjs',
-  'test-pdf-pagination.mjs',
-];
+const TEST_SCRIPTS = ['test-summary-parser.mjs', 'test-pdf-pagination.mjs'];
 
 let passed = 0;
 let failed = 0;
@@ -25,17 +22,17 @@ for (const script of TEST_SCRIPTS) {
   let stdout = '';
   let stderr = '';
 
-  child.stdout.on('data', (d) => {
+  child.stdout.on('data', d => {
     stdout += d;
     process.stdout.write(d);
   });
-  child.stderr.on('data', (d) => {
+  child.stderr.on('data', d => {
     stderr += d;
     process.stderr.write(d);
   });
 
-  await new Promise((resolve) => {
-    child.on('close', (code) => {
+  await new Promise(resolve => {
+    child.on('close', code => {
       if (code === 0) {
         passed++;
       } else {

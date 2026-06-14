@@ -4,12 +4,12 @@
 
 ## Requirements
 
-| Tool | Version | Why |
-|---|---|---|
-| macOS | 13+ (Apple Silicon recommended) | oMLX is Apple-Silicon-only |
-| Node.js | ≥ 20 | ESM, native `fetch`, `AbortSignal.timeout` |
-| oMLX | latest dev | LLM provider (port 8585) |
-| Piper TTS | optional | only needed for `/api/tts` |
+| Tool      | Version                         | Why                                        |
+| --------- | ------------------------------- | ------------------------------------------ |
+| macOS     | 13+ (Apple Silicon recommended) | oMLX is Apple-Silicon-only                 |
+| Node.js   | ≥ 20                            | ESM, native `fetch`, `AbortSignal.timeout` |
+| oMLX      | latest dev                      | LLM provider (port 8585)                   |
+| Piper TTS | optional                        | only needed for `/api/tts`                 |
 
 ## One-time setup
 
@@ -49,6 +49,7 @@ npm start
 ```
 
 After start:
+
 - Open <http://localhost:4000>
 - Health check: <http://localhost:4000/api/health>
 
@@ -61,6 +62,7 @@ cd client && npm test
 ```
 
 Manual smoke:
+
 1. Paste `https://www.youtube.com/watch?v=dQw4w9WgXcQ` (or any public video
    with captions) into the input.
 2. Click "Extract Transcript" — wait for raw segments to load.
@@ -85,13 +87,13 @@ PIPER_MODELS_DIR=/Users/radek/.hermes/piper-models
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| Port 4000 already in use | Another instance is running | `./manage.sh stop` |
-| `/api/health` returns `degraded` | oMLX is down or unreachable | Start oMLX; check `OMLX_URL` in `.env` |
-| `404` on `/api/transcript` | The video has no captions | Try another video |
-| `413 Payload Too Large` | Transcript exceeded 16 MB | Raise the limit in `server.js` |
-| `502` on `/api/transform` | oMLX rejected the request | Check oMLX logs; the cascade may have tried 3 models |
-| Build recovery page shows | `client/dist/` is empty | `npm run build` then restart |
-| `/api/tts` returns 503 | Piper binary not installed | Install Piper or ignore — TTS is optional |
-| `Error: Cannot find module` | `node_modules` out of sync | `npm install` in both root and `client/` |
+| Symptom                          | Likely cause                | Fix                                                  |
+| -------------------------------- | --------------------------- | ---------------------------------------------------- |
+| Port 4000 already in use         | Another instance is running | `./manage.sh stop`                                   |
+| `/api/health` returns `degraded` | oMLX is down or unreachable | Start oMLX; check `OMLX_URL` in `.env`               |
+| `404` on `/api/transcript`       | The video has no captions   | Try another video                                    |
+| `413 Payload Too Large`          | Transcript exceeded 16 MB   | Raise the limit in `server.js`                       |
+| `502` on `/api/transform`        | oMLX rejected the request   | Check oMLX logs; the cascade may have tried 3 models |
+| Build recovery page shows        | `client/dist/` is empty     | `npm run build` then restart                         |
+| `/api/tts` returns 503           | Piper binary not installed  | Install Piper or ignore — TTS is optional            |
+| `Error: Cannot find module`      | `node_modules` out of sync  | `npm install` in both root and `client/`             |

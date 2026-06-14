@@ -30,8 +30,17 @@ export function stripMarkdown(text) {
     .replace(/\*+/g, '');
 }
 
-function inlineMdToHtml(text = '') {
+function escapeHtml(text = '') {
   return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function inlineMdToHtml(text = '') {
+  const escaped = escapeHtml(text);
+  return escaped
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.*?)\*/g, '<em>$1</em>');
 }
@@ -112,9 +121,9 @@ export function summaryToPdfBlocks(rawText) {
 export function reconstructedToPdfBlocks(text) {
   return String(text)
     .split(/\n{2,}/)
-    .map((p) => p.trim())
+    .map(p => p.trim())
     .filter(Boolean)
-    .map((p) => ({ type: 'paragraph', text: p }));
+    .map(p => ({ type: 'paragraph', text: p }));
 }
 
 export function paginateMeasuredBlocks(blocks, { availableHeight }) {
@@ -191,13 +200,16 @@ function createBlockElement(block, index) {
   const el = document.createElement(tag);
   el.className = blockClass(block.type);
   el.dataset.pdfBlockIndex = String(index);
-  // Use innerHTML for all types so markdown formatting survives html2canvas
+  // innerHTML with escapeHtml-sanitised input — prevents XSS (audit #7).
+  // escapeHtml runs before markdown transforms so < > & are neutralised.
   el.innerHTML = mdToHtml(block.text || '');
 
   if (block.type === 'sectionHeader') {
-    el.style.cssText = 'font-size:16px;font-weight:700;line-height:1.35;margin:18px 0 8px 0;color:#111827;break-after:avoid;';
+    el.style.cssText =
+      'font-size:16px;font-weight:700;line-height:1.35;margin:18px 0 8px 0;color:#111827;break-after:avoid;';
   } else if (block.type === 'intro') {
-    el.style.cssText = 'font-size:15px;line-height:1.6;font-style:italic;color:#374151;border-left:4px solid #6366f1;padding-left:12px;margin:0 0 18px 0;';
+    el.style.cssText =
+      'font-size:15px;line-height:1.6;font-style:italic;color:#374151;border-left:4px solid #6366f1;padding-left:12px;margin:0 0 18px 0;';
   } else {
     el.style.cssText = 'font-size:15px;line-height:1.6;margin:0 0 12px 0;color:#111827;';
   }
@@ -246,9 +258,10 @@ function createPageDom(pageBlocks, pageIndex, title) {
 
   const titleEl = document.createElement(pageIndex === 0 ? 'h1' : 'div');
   titleEl.textContent = title;
-  titleEl.style.cssText = pageIndex === 0
-    ? 'font-size:20px;line-height:1.2;font-weight:700;text-align:center;margin:0 0 24px 0;color:#111827;'
-    : 'font-size:12px;line-height:1.2;text-align:center;margin:0 0 18px 0;color:#6b7280;';
+  titleEl.style.cssText =
+    pageIndex === 0
+      ? 'font-size:20px;line-height:1.2;font-weight:700;text-align:center;margin:0 0 24px 0;color:#111827;'
+      : 'font-size:12px;line-height:1.2;text-align:center;margin:0 0 18px 0;color:#6b7280;';
   page.appendChild(titleEl);
 
   pageBlocks.forEach((block, index) => {
@@ -293,7 +306,8 @@ export async function exportBlocksToPdf({ title, filename, blocks }) {
 
   const measured = measureBlocks(blocks);
   const titleReserve = 64;
-  const availableHeight = PDF_PAGE.heightPx - PDF_PAGE.paddingTopPx - PDF_PAGE.paddingBottomPx - titleReserve;
+  const availableHeight =
+    PDF_PAGE.heightPx - PDF_PAGE.paddingTopPx - PDF_PAGE.paddingBottomPx - titleReserve;
   const pages = paginateMeasuredBlocks(measured, { availableHeight });
 
   const pdf = new jsPDF('p', 'mm', 'a4');

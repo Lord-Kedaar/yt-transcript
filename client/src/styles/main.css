@@ -24,7 +24,9 @@
   --transition-slow: 400ms ease;
 }
 
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -37,7 +39,8 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
@@ -75,8 +78,13 @@ body {
 }
 
 @keyframes logoPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
 }
 
 .logo-text {
@@ -139,7 +147,9 @@ body {
   color: var(--text-primary);
   font-size: 0.95rem;
   outline: none;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .url-input::placeholder {
@@ -167,7 +177,9 @@ body {
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--transition-fast), transform var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast);
   white-space: nowrap;
 }
 
@@ -200,7 +212,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ===== Error Message ===== */
@@ -233,8 +247,14 @@ body {
 }
 
 @keyframes slideDown {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ===== Reset Bar (New Transcript) ===== */
@@ -426,8 +446,12 @@ body {
 }
 
 @keyframes segmentFadeIn {
-  from { opacity: 0.7; }
-  to { opacity: 1; }
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 /* ===== Reconstruct Button ===== */
@@ -446,7 +470,9 @@ body {
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--transition-fast), transform var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .reconstruct-button:hover:not(:disabled) {
@@ -480,7 +506,9 @@ body {
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background var(--transition-fast), transform var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .summarize-button:hover:not(:disabled) {
@@ -583,23 +611,47 @@ body {
   inset: 0;
   width: 40%;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.15), rgba(99, 102, 241, 0.95), rgba(139, 92, 246, 0.15));
+  background: linear-gradient(
+    90deg,
+    rgba(99, 102, 241, 0.15),
+    rgba(99, 102, 241, 0.95),
+    rgba(139, 92, 246, 0.15)
+  );
   animation: aiBar 1.25s ease-in-out infinite;
 }
 
 @keyframes aiPulse {
-  0%, 100% { transform: scale(1); opacity: 0.7; }
-  50% { transform: scale(1.12); opacity: 1; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
 }
 
 @keyframes aiDots {
-  0%, 80%, 100% { transform: translateY(0); opacity: 0.45; }
-  40% { transform: translateY(-4px); opacity: 1; }
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
 }
 
 @keyframes aiBar {
-  0% { transform: translateX(-55%); }
-  100% { transform: translateX(220%); }
+  0% {
+    transform: translateX(-55%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
 }
 
 /* ===== Reconstructed Panel ===== */
@@ -645,7 +697,9 @@ body {
   color: var(--text-primary);
   font-size: 0.8rem;
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .copy-button:hover {
@@ -670,7 +724,10 @@ body {
   color: var(--accent-primary);
   font-size: 0.8rem;
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .tts-button:hover {
@@ -699,7 +756,9 @@ body {
   color: var(--text-primary);
   font-size: 0.8rem;
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .save-button:hover {
@@ -784,7 +843,9 @@ body {
   color: var(--text-primary);
   font-size: 0.85rem;
   cursor: pointer;
-  transition: background var(--transition-fast), border-color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
 }
 
 .export-button:hover {
@@ -891,8 +952,12 @@ body {
 }
 
 @keyframes modalFadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .modal-content {
@@ -944,7 +1009,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background var(--transition-fast), color var(--transition-fast);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
 }
 
 .modal-close:hover {
@@ -1055,7 +1122,7 @@ body {
   padding: 0.5rem;
   z-index: 100;
   min-width: 140px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
 }
 
 .save-menu-dropdown button {
@@ -1076,7 +1143,7 @@ body {
 }
 
 .save-menu-dropdown button:hover {
-  background: rgba(255,255,255,0.08);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .summary-intro {

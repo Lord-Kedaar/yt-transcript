@@ -74,6 +74,7 @@
 ## Public demo limitations (not yet built)
 
 See `PUBLIC_DEMO_PLAN.md`. The short list:
+
 - No subdomain is configured.
 - No Turnstile / rate limit.
 - No daily / monthly budget guard.

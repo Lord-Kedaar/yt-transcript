@@ -31,12 +31,12 @@ For prerequisites, env vars, troubleshooting — see **[docs/LOCAL_SETUP.md](doc
 
 A repo audit identified 9 issues, ordered into 4 phases. Current state:
 
-| Phase | Scope | Status |
-|---|---|---|
-| 0 | Documentation sync (this PR) | ✅ done |
-| 1 | Remove hardcoded fallback, cache LRU + hash key | ⏳ planned |
-| 2 | CORS/host/allowedHosts tightening, rate limits, Vite upgrade | ✅ done |
-| 3 | ESLint/Prettier, CI, PDF XSS fix, repo cleanup | ⏳ planned |
+| Phase | Scope                                                        | Status     |
+| ----- | ------------------------------------------------------------ | ---------- |
+| 0     | Documentation sync (this PR)                                 | ✅ done    |
+| 1     | Remove hardcoded fallback, cache LRU + hash key              | ⏳ planned |
+| 2     | CORS/host/allowedHosts tightening, rate limits, Vite upgrade | ✅ done    |
+| 3     | ESLint/Prettier, CI, PDF XSS fix, repo cleanup               | ⏳ planned |
 
 See `docs/SECURITY_NOTES.md` for the corrected findings (the previous
 v3.2.1 entry claiming the fallback was removed is **incorrect** — the
@@ -44,16 +44,16 @@ fallback is still in `server.js:23` and will be removed in Phase 1).
 
 ## Documentation
 
-| File | Purpose |
-|---|---|
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | High-level design, file layout, state |
-| [docs/SECURITY_NOTES.md](docs/SECURITY_NOTES.md) | Threat model, mitigations, secret audit |
-| [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md) | Honest list of what does not work |
-| [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md) | Install, run, test, troubleshoot |
-| [docs/PUBLIC_DEMO_PLAN.md](docs/PUBLIC_DEMO_PLAN.md) | `transcript.radoslaw-pleskot.com` plan (not deployed) |
-| [docs/PROVIDER_MATRIX.md](docs/PROVIDER_MATRIX.md) | OpenRouter / Groq / Mistral / Ollama Cloud / oMLX comparison |
-| [CHANGELOG.md](CHANGELOG.md) | Version history |
-| [docs/legacy-server-pre-memory-fallback.js.bak](docs/legacy-server-pre-memory-fallback.js.bak) | Pre-v3.2 server snapshot (for diff archaeology) |
+| File                                                                                           | Purpose                                                      |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                                                   | High-level design, file layout, state                        |
+| [docs/SECURITY_NOTES.md](docs/SECURITY_NOTES.md)                                               | Threat model, mitigations, secret audit                      |
+| [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md)                                         | Honest list of what does not work                            |
+| [docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)                                                     | Install, run, test, troubleshoot                             |
+| [docs/PUBLIC_DEMO_PLAN.md](docs/PUBLIC_DEMO_PLAN.md)                                           | `transcript.radoslaw-pleskot.com` plan (not deployed)        |
+| [docs/PROVIDER_MATRIX.md](docs/PROVIDER_MATRIX.md)                                             | OpenRouter / Groq / Mistral / Ollama Cloud / oMLX comparison |
+| [CHANGELOG.md](CHANGELOG.md)                                                                   | Version history                                              |
+| [docs/legacy-server-pre-memory-fallback.js.bak](docs/legacy-server-pre-memory-fallback.js.bak) | Pre-v3.2 server snapshot (for diff archaeology)              |
 
 ## Portfolio card (standard format)
 
@@ -84,15 +84,15 @@ fallback is still in `server.js:23` and will be removed in Phase 1).
 
 ## Endpoints
 
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/health` | oMLX probe + uptime + cache stats |
-| GET | `/api/build-version` | release metadata |
-| GET | `/api/transcript?url=<youtube-url>` | Fetch transcript for a URL |
-| POST | `/api/transform` | `{snippets, type, mode}` → `{reconstructed\|summary, ...}` |
-| POST | `/api/tts` | `{text, lang}` → `{audioUrl, lang}` (503 if Piper missing) |
-| GET | `/api/audio/:id` | Serve generated WAV |
-| GET | `/` | SPA (`client/dist/index.html`) or recovery page |
+| Method | Path                                | Purpose                                                    |
+| ------ | ----------------------------------- | ---------------------------------------------------------- |
+| GET    | `/api/health`                       | oMLX probe + uptime + cache stats                          |
+| GET    | `/api/build-version`                | release metadata                                           |
+| GET    | `/api/transcript?url=<youtube-url>` | Fetch transcript for a URL                                 |
+| POST   | `/api/transform`                    | `{snippets, type, mode}` → `{reconstructed\|summary, ...}` |
+| POST   | `/api/tts`                          | `{text, lang}` → `{audioUrl, lang}` (503 if Piper missing) |
+| GET    | `/api/audio/:id`                    | Serve generated WAV                                        |
+| GET    | `/`                                 | SPA (`client/dist/index.html`) or recovery page            |
 
 ## Tests
 

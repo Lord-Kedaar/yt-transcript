@@ -1,8 +1,10 @@
 # Design System — ytTranscript
+
 > Category: Reading + Triage Utility
 > Local-first web tool that turns fragmented YouTube captions into readable paragraphs and a clean bullet summary. Calm, evidence-aware, read-first, action-on-demand.
 
 > Lokalny adapter:
+>
 > - nadrzędny kontrakt GUI: `ZOLZOTRON_APP_DESIGN_SYSTEM.md` (wspólne dla wszystkich aplikacji Zołzotrona)
 > - proceduralny playbook: `UI_UX_REDESIGN_PLAYBOOK.md` (CORE_NOW / OPTIONAL_LATER / REJECT)
 > - lokalny review: brak (projekt jeszcze nie przeszedł formalnego `UI_UX_REVIEW_YT_TRANSCRIPT.md`)
@@ -18,6 +20,7 @@ ytTranscript to **osobista czytelnia transkrypcji YouTube** — narzędzie, nie 
 - Design intent: Niech użytkownik **przeczyta transkrypt szybciej niż ogląda wideo** i poczuje, że ma kontrolę nad tekstem — nie nad „algorytmem"
 
 Interfejs powinien sprawiać wrażenie:
+
 - czytelnego (read-first);
 - przewidywalnego (ta sama akcja = ten sam wynik);
 - technicznie wiarygodnego (konkretne statusy, limity, czasy);
@@ -25,6 +28,7 @@ Interfejs powinien sprawiać wrażenie:
 - użytecznego bez instrukcji (jeden widok, jedna rzecz na raz).
 
 Unikać:
+
 - generycznego „AI startup" wyglądu (gradient halo, neon, blob);
 - terminala cyberpunk;
 - wielu bento-kafelków z „metrykami AI";
@@ -56,6 +60,7 @@ Tokeny dziedziczone z `ZOLZOTRON_APP_DESIGN_SYSTEM.md` §3.1. W tym projekcie og
 - Info: `#315C8C` / `#E4EEF8` (status, licznik tokenów w panelu bocznym)
 
 Zasady użycia w tym projekcie:
+
 - **Lime nigdy nie wypełnia dużych powierzchni** — to sygnał „coś się dzieje teraz", nie stylistyka marki.
 - **Fiolet nigdy nie oznacza akcji** — to sygnał „to jest artefakt do pobrania / wynik końcowy".
 - **Navy jest zarezerwowane na główne CTA** (`Rekonstruuj z AI`, `Streszcz z AI`, `Start TTS`) i nagłówek aplikacji.
@@ -72,6 +77,7 @@ Zasady użycia w tym projekcie:
 - Line-height body: `1.6` (transkrypt ma się czytać, nie skanować)
 
 Zasady:
+
 - Maksymalnie dwa kroje.
 - **Mono tylko dla** licznika tokenów, czasu odpowiedzi modelu, długości pliku audio, ID wpisu cache i metadanych w panelu diagnostycznym.
 - **Body text minimum 16 px**. Helper text minimum 14 px.
@@ -90,6 +96,7 @@ Zasady:
 - Padding desktop: `32px` (główna oś), `24px` (panel)
 
 Zasady:
+
 - **Whitespace przed obramowaniem** — nie obramowanie zamiast whitespace.
 - **Bez zagnieżdżonych kart.** Sekcje oddzielone białą przestrzenią albo jedną linią border.
 - **Karty tylko dla**: lista cache, panel diagnostyczny, lista audio do pobrania. Nie dla każdej sekcji.
@@ -147,6 +154,7 @@ Każda sekcja ma obsługiwać:
 - `PARTIAL_SUCCESS` — pobrano część transkryptu (np. tylko auto-generated), reszta się nie udała
 
 Zasady layoutu:
+
 - **Jedna dominująca akcja na widok.** Nigdy dwa CTA o tej samej wadze w tej samej sekcji.
 - **Na mobile jedna kolumna.** Żadnych dwóch przewijalnych kontenerów obok siebie.
 - **Sticky actions tylko dla pola URL i toolbar nad transkryptem.** Nigdy dla eksportu / TTS.
@@ -155,6 +163,7 @@ Zasady layoutu:
 ## 6. Components
 
 ### Top bar
+
 - Tło: `--app-surface`, border-bottom 1 px `--app-border`.
 - Lewa: `▶ ytTranscript` (logo: trójkąt play + nazwa, weight 600, 16 px).
 - Prawa: status providera (`oMLX: online` jako badge success) + link do `docs/`.
@@ -162,10 +171,12 @@ Zasady layoutu:
 - Sticky do góry viewport.
 
 ### Status providera
+
 - Badge typu `info` (online) / `warning` (degraded) / `error` (offline) + tekst statusu.
 - Na mobile badge trafia do panelu diagnostycznego.
 
 ### Pole URL (główne wejście)
+
 - Label: `Wklej link do filmu YouTube` (14 px, weight 500, padding-bottom 8 px).
 - Input: pełna szerokość, 16 px, radius 10 px, helper text pod spodem (`np. https://www.youtube.com/watch?v=...`).
 - Przycisk `Pobierz transkrypt` obok inputa desktop, **pod** inputem na mobile (full width).
@@ -173,11 +184,13 @@ Zasady layoutu:
 - Error: border `--app-error`, helper text w kolorze error.
 
 ### Przycisk `Pobierz transkrypt`
+
 - Primary CTA, navy, height min 44 px, radius 10 px, padding 12 px 20 px.
 - Stany: default, hover (translateY -1 px + subtelna zmiana tła), focus (lime outline), active, disabled (opacity 0.5), loading (ikona + „cursor: wait").
 - Loading label: `Pobieram…` (nie „Pobieranie..." z trzema kropkami animowanymi).
 
 ### Toolbar akcji transkryptu
+
 - Sticky u góry sekcji transkryptu.
 - Cztery akcje (w tej hierarchii):
   1. `Rekonstruuj z AI` (secondary) — generuje czytelne akapity
@@ -188,12 +201,14 @@ Zasady layoutu:
 - Na mobile: stack pionowy, pełna szerokość każdego przycisku.
 
 ### Tryb wyświetlania transkryptu (segment control)
+
 - Dwa stany: `Surowy` | `Rekonstrukcja AI` (domyślnie `Rekonstrukcja AI` gdy dostępna).
 - Aktywny: tło `--app-surface`, border `--app-navy`, tekst `--app-navy`, weight 500.
 - Nieaktywny: tło `--app-bg`, tekst `--app-text-muted`.
 - Focus: 2 px outline `--app-lime`.
 
 ### Karta transkryptu (jeden duży blok, nie kafelki)
+
 - Tło: `--app-surface`, padding 24 px desktop / 16 px mobile, radius 14 px, border 1 px `--app-border`.
 - Header: licznik znaków + czas trwania filmu (mono 12 px, muted) + język napisów (badge neutral).
 - Body: 16 px, line-height 1.6, max 72 ch na linię, **paragraphy oddzielone jedną pustą linią** (nie kolejnymi kartami).
@@ -202,6 +217,7 @@ Zasady layoutu:
 - Aktywna operacja AI: cienka górna krawędź 3 px `--app-lime` (sygnał „to właśnie przetwarzamy").
 
 ### Sekcja Streszczenie AI
+
 - Pojawia się po kliknięciu `Streszcz z AI`.
 - Tytuł: `Streszczenie` (16 px, weight 600).
 - Badge pod tytułem: `Wygenerowano • model • czas • tokeny`.
@@ -209,6 +225,7 @@ Zasady layoutu:
 - Aktywna operacja: lime krawędź + spinner z napisem `Streszczam…` obok badge'a.
 
 ### Sekcja TTS
+
 - Zwinięta `<details>` domyślnie, rozwinięta gdy audio dostępne.
 - Tytuł: `Czytanie na głos`.
 - Wybór języka: segment control `pl | en | de`.
@@ -219,12 +236,14 @@ Zasady layoutu:
 - Gdy audio gotowe: badge `accent-violet` z metadanymi (czas, rozmiar, język).
 
 ### Eksport
+
 - Dropdown / menu: `TXT`, `SRT`, `Markdown`, `PDF`.
 - Po wyborze: natychmiastowy download.
 - Badge `accent-violet` przy każdej pozycji menu („artefakt do pobrania").
 - Brak własnego podglądu PDF / MD w aplikacji — użytkownik pobiera, nie ogląda.
 
 ### Panel diagnostyczny (boczny / zwijany)
+
 - Pola (każde mono 12 px, muted):
   - `Build: v3.2.0`
   - `Cache: hit | miss`
@@ -239,11 +258,13 @@ Zasady layoutu:
 - Na mobile: `<details>` na dole, zwinięte domyślnie.
 
 ### Privacy notice
+
 - Stały element, **nie chowany** w UI.
 - Tekst: `Lokalne przetwarzanie. Transkrypty i zapytania do modelu nie opuszczają tej maszyny. To demonstrator, nie system produkcyjny.`
 - Styl: notice typu `info` lub `privacy`, max-width 720 px, margin-top 24 px od reszty.
 
 ### Footer
+
 - `© 2026 Radosław Pleskot · ytTranscript` (mono 12 px, muted).
 - Linki: `Dokumentacja` • `Bezpieczeństwo` • `Znane ograniczenia`.
 - Safe-area aware na mobile.
@@ -260,6 +281,7 @@ Zasady layoutu:
 - Skeleton tylko do ładowania pierwszej strony (jeśli w ogóle potrzebny). Wewnątrz aplikacji wolę spinner + komunikat niż migające kształty.
 
 Czego **nie** robić:
+
 - animowane bloby / tła;
 - parallax;
 - scroll hijacking;
@@ -271,6 +293,7 @@ Czego **nie** robić:
 ## 8. Voice & Microcopy
 
 Ton:
+
 - konkretny;
 - spokojny;
 - zwięzły;
@@ -279,6 +302,7 @@ Ton:
 - bez „AI-speak" (nie piszemy „nasz zaawansowany model", „inteligentnie", „automatycznie magicznie");
 
 Przykłady (PL):
+
 - Loading pobierania: `Pobieram transkrypt…`
 - Loading rekonstrukcji: `Rekonstruuję tekst za pomocą modelu…` (z limitem czasu)
 - Loading streszczenia: `Generuję streszczenie…`
@@ -293,6 +317,7 @@ Przykłady (PL):
 - Cache hit: `Transkrypt wczytany z pamięci podręcznej.`
 
 Czego **nie pisać**:
+
 - `100% dokładne`;
 - `RODO compliant`;
 - `pełna prywatność`;
@@ -322,6 +347,7 @@ Target: **WCAG 2.2 AA-aware implementation** (zgodnie z `ZOLZOTRON_APP_DESIGN_SY
 - **Nie ukrywać focus** za animowanym overlayem (focus-not-obscured).
 
 Raportowane po każdej większej zmianie:
+
 - przetestowane (lista);
 - zaliczony kontrast (jakie narzędzie, ile par);
 - niezaliczony (z priorytetem);
@@ -344,6 +370,7 @@ Interfejs musi mówić wprost:
 - W stopce / settings: link do `docs/SECURITY_NOTES.md`.
 
 **Zakazane sformułowania** (w UI, w komunikatach, w marketingu apki):
+
 - `100% bezpieczne`;
 - `RODO compliant`;
 - `zero ryzyka`;
@@ -352,6 +379,7 @@ Interfejs musi mówić wprost:
 - `dane nigdy nie opuszczają przeglądarki` (nieprawda w tym flow — idą do lokalnego backendu i do lokalnego modelu).
 
 **Preferowane sformułowania**:
+
 - `Nie wpisuj danych osobowych ani poufnych.`;
 - `To demonstrator, nie system produkcyjny.`;
 - `Transkrypt i zapytania do modelu przetwarzane lokalnie.`;
@@ -361,6 +389,7 @@ Interfejs musi mówić wprost:
 ## 11. Anti-patterns (dla tego projektu)
 
 Nie wdrażać:
+
 - hero / landing page wewnątrz narzędzia;
 - feature grid „co potrafi ytTranscript";
 - bento-grid z kafelkami „AI insights";
@@ -411,6 +440,7 @@ Każdy z poniższych stanów musi mieć ręczny test w `docs/LOCAL_SETUP.md` (se
 ## 13. Roadmap klasyfikacji (per Playbook §1)
 
 ### `CORE_NOW` (wdrożyć w v3.3)
+
 - Przebudowa top bara (logo + status providera) wg §6.
 - Pole URL z label i helper text wg §6.
 - Toolbar akcji transkryptu (4 akcje, jednolita waga, stack na mobile).
@@ -425,6 +455,7 @@ Każdy z poniższych stanów musi mieć ręczny test w `docs/LOCAL_SETUP.md` (se
 - Accessibility review per §9.
 
 ### `OPTIONAL_LATER` (zaparkować)
+
 - Dropdown eksportu jako menu (teraz może być prosty inline rząd 4 przycisków).
 - `<details>` z pełnym promptem i odpowiedzią modelu (dla trybu eksperckiego).
 - Ciemny motyw (tokeny już są zdefiniowane, wystarczy dodać mapowanie).
@@ -435,6 +466,7 @@ Każdy z poniższych stanów musi mieć ręczny test w `docs/LOCAL_SETUP.md` (se
 - Szybki dostęp do ostatnich 5 transkrypcji (cache + localStorage klucza URL, nie treści).
 
 ### `NOT_APPLICABLE`
+
 - Bento-grid metryk AI (narzędzie czytelnicze, nie dashboard).
 - Bottom navbar mobile (jedna kolumna, nie potrzeba).
 - Tryb „agenta" z wieloma intencjami (to `AI Discuss Studio`, nie `ytTranscript`).
@@ -444,6 +476,7 @@ Każdy z poniższych stanów musi mieć ręczny test w `docs/LOCAL_SETUP.md` (se
 - Tryb offline apki (wymaga pobierania filmów, z natury online dla URL — operacja pobierania transkryptu wymaga sieci).
 
 ### `REJECT`
+
 - Analytics, telemetry, trackery (Zakaz globalny).
 - Glassmorphism, neon, animowane bloby.
 - Ciężkie biblioteki animacji (Framer Motion itp.).
@@ -459,15 +492,19 @@ Jeden lekki kierunek: **„Reading Room"** — spokojna, ciepła, redakcyjna. Ws
 Trzy warianty do rozważenia przed wdrożeniem (do pokazania w issue / dyskusji):
 
 ### A. Editorial Calm (domyślny dla tego projektu)
+
 Najbliżej systemu. Ciepłe tło, navy nagłówek, lime tylko na aktywnym przycisku AI, fiolet tylko na badge'ach eksportu. Wygląda jak notatnik, nie apka. Wszystko mieści się w 720 px szerokości głównej osi.
 
 ### B. Operator Console
+
 Gęstszy układ, panel diagnostyczny zawsze widoczny po prawej, mono liczniki w pierwszym planie. Bliżej „narzędzia dev" niż „czytelni". Dla użytkownika, który chce widzieć czasy i tokeny przy każdej operacji. Mniej czytelny dla osoby nietechnicznej.
 
 ### C. Hybrid (rekomendowany do implementacji)
+
 Domyślnie Editorial Calm. Panel diagnostyczny dostępny jednym kliknięciem (ikona `</>` w top barze otwiera drawer z prawej). Domyślnie ukryty. Pozwala zachować „reading room" dla zwykłego użytkownika i „operator console" dla technicznego, bez dwóch osobnych widoków.
 
 Dla każdego wariantu pokazać (w `docs/screenshots/` po wdrożeniu):
+
 - **Desktop 1280 px**: empty state, wczytany transkrypt (surowy), rekonstrukcja AI w toku, rekonstrukcja zakończona, streszczenie wygenerowane, eksport PDF w toku, TTS gotowe, oMLX offline notice, błąd pobierania.
 - **Mobile 390 px**: te same 10 stanów w jednej kolumnie.
 - **Mobile 320 px**: edge case dla najmniejszego obsługiwanego width.
@@ -487,6 +524,7 @@ Wszystkie komponenty dziedziczą tokeny z `ZOLZOTRON_APP_DESIGN_SYSTEM.md` §3 i
 ### A.1. Button
 
 **Primary**
+
 - Tło: `--app-navy` (`#0D2035`).
 - Tekst: `--app-surface` (`#FFFDF9`).
 - Radius: 10 px.
@@ -497,6 +535,7 @@ Wszystkie komponenty dziedziczą tokeny z `ZOLZOTRON_APP_DESIGN_SYSTEM.md` §3 i
 - Stany: default, hover (`translateY(-1px)` + tło jaśniejsze o 4%), focus (2 px outline `--app-lime`, offset 2 px), active, disabled (opacity 0.5, cursor `not-allowed`), loading (ikona + `cursor: wait`).
 
 **Secondary**
+
 - Tło: transparent.
 - Obramowanie: 1 px solid `--app-border` (`#D8DEE5`).
 - Tekst: `--app-text` (`#071525`).
@@ -504,9 +543,11 @@ Wszystkie komponenty dziedziczą tokeny z `ZOLZOTRON_APP_DESIGN_SYSTEM.md` §3 i
 - Stany: default, hover (tło `--app-bg`), focus, active, disabled, loading.
 
 **Destructive**
+
 - Stosować wyłącznie do: `Zatrzymaj generowanie` (jeśli kiedyś się pojawi) i `Wyczyść cache`. W v1 nie ma destrukcyjnych akcji w UI.
 
 **Icon button**
+
 - Kwadrat 40 × 40 px.
 - Tło: transparent.
 - Hover: tło `--app-bg`.
@@ -717,6 +758,7 @@ Wszystkie komponenty dziedziczą tokeny z `ZOLZOTRON_APP_DESIGN_SYSTEM.md` §3 i
 ---
 
 **Następne kroki implementacyjne (poza zakresem tego pliku)**:
+
 1. Utworzyć `docs/UI_UX_REVIEW_YT_TRANSCRIPT.md` z audytem bieżącego GUI.
 2. Wdrożyć wariant Hybrid (C) z §14.
 3. Zaktualizować `CHANGELOG.md` po każdej wdrożonej sekcji.

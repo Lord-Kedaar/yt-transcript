@@ -15,10 +15,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 4000);
 const OMLX_URL = process.env.OMLX_URL || process.env.LM_STUDIO_URL || 'http://localhost:8585';
 const OMLX_MODEL = process.env.OMLX_MODEL || process.env.LM_STUDIO_MODEL || 'gemma-4-12B-it-nvfp4';
-const OMLX_FALLBACK_MODELS = [
-  'gemma-4-12B-it-assistant-nvfp4',
-  'Qwen3.5-4B-mlx-lm-nvfp4',
-];
+const OMLX_FALLBACK_MODELS = ['gemma-4-12B-it-assistant-nvfp4', 'Qwen3.5-4B-mlx-lm-nvfp4'];
 // No hardcoded fallback — operators must set OMLX_API_KEY in production.
 // oMLX allows unauthenticated requests (empty Bearer is accepted locally).
 const OMLX_API_KEY = process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY || '';
@@ -30,7 +27,12 @@ const INDEX_HTML_PATH = path.join(__dirname, 'client', 'dist', 'index.html');
 const PIPER_BIN = process.env.PIPER_BIN || '/Users/radek/.hermes/hermes-agent/venv/bin/piper';
 const PIPER_MODELS_DIR = process.env.PIPER_MODELS_DIR || '/Users/radek/.hermes/piper-models';
 const TTS_VOICES = {
-  pl: { name: 'justyna', model: 'pl_PL-justyna_wg_glos-medium.onnx', config: 'pl_PL-justyna_wg_glos-medium.onnx.json', espeakVoice: 'pl' },
+  pl: {
+    name: 'justyna',
+    model: 'pl_PL-justyna_wg_glos-medium.onnx',
+    config: 'pl_PL-justyna_wg_glos-medium.onnx.json',
+    espeakVoice: 'pl',
+  },
   en: { name: 'hfc_female', model: 'en_US-hfc_female-medium.onnx', espeakVoice: 'en-us' },
   de: { name: 'thorsten', model: 'de_DE-thorsten-medium.onnx', espeakVoice: 'de' },
 };
@@ -38,11 +40,9 @@ const ttsCacheDir = '/tmp/tts-cache';
 fs.mkdirSync(ttsCacheDir, { recursive: true });
 
 // ── Security: CORS (default: local dev, lock to env in production) ──────────
-const CORS_ORIGIN = process.env.CORS_ORIGIN || (
-  process.env.NODE_ENV === 'production'
-    ? 'https://transcript.radoslaw-pleskot.com'
-    : '*'
-);
+const CORS_ORIGIN =
+  process.env.CORS_ORIGIN ||
+  (process.env.NODE_ENV === 'production' ? 'https://transcript.radoslaw-pleskot.com' : '*');
 
 // ── Security: Rate limiting ─────────────────────────────────────────────────
 const transformLimiter = rateLimit({
@@ -82,7 +82,13 @@ app.disable('x-powered-by');
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json({ limit: '16mb' }));
 // Serve static assets from build output
-app.use('/assets', express.static(path.join(__dirname, 'client', 'dist', 'assets'), { immutable: true, maxAge: '1y' }));
+app.use(
+  '/assets',
+  express.static(path.join(__dirname, 'client', 'dist', 'assets'), {
+    immutable: true,
+    maxAge: '1y',
+  }),
+);
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   next();
@@ -107,7 +113,11 @@ function getErrorMessage(err) {
 
 function isRetryableError(err) {
   if (!err) return false;
-  if (typeof err === 'object' && Number.isInteger(err.status) && RETRYABLE_STATUS_CODES.has(err.status)) {
+  if (
+    typeof err === 'object' &&
+    Number.isInteger(err.status) &&
+    RETRYABLE_STATUS_CODES.has(err.status)
+  ) {
     return true;
   }
 
@@ -141,12 +151,10 @@ function isOmlxMemoryPressureError(err) {
   );
 }
 
-async function withRetry(operation, {
-  attempts = 3,
-  baseDelayMs = 350,
-  label = 'operation',
-  shouldRetry = isRetryableError,
-} = {}) {
+async function withRetry(
+  operation,
+  { attempts = 3, baseDelayMs = 350, label = 'operation', shouldRetry = isRetryableError } = {},
+) {
   let lastError;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -158,7 +166,9 @@ async function withRetry(operation, {
         throw err;
       }
       const delay = baseDelayMs * attempt;
-      console.warn(`${label} failed (attempt ${attempt}/${attempts}); retrying in ${delay}ms: ${getErrorMessage(err)}`);
+      console.warn(
+        `${label} failed (attempt ${attempt}/${attempts}); retrying in ${delay}ms: ${getErrorMessage(err)}`,
+      );
       await sleep(delay);
     }
   }
@@ -183,12 +193,7 @@ async function withTimeout(promiseFactory, timeoutMs, label) {
   }
 }
 
-async function fetchJsonOnce(url, {
-  timeoutMs = 5000,
-  headers = {},
-  method = 'GET',
-  body,
-} = {}) {
+async function fetchJsonOnce(url, { timeoutMs = 5000, headers = {}, method = 'GET', body } = {}) {
   const response = await fetch(url, {
     method,
     headers,
@@ -235,7 +240,16 @@ function collectCandidateSegments(value, seen = new Set()) {
     return value.flatMap(item => collectCandidateSegments(item, seen));
   }
 
-  const keysToProbe = ['segments', 'transcript', 'items', 'entries', 'lines', 'captions', 'data', 'result'];
+  const keysToProbe = [
+    'segments',
+    'transcript',
+    'items',
+    'entries',
+    'lines',
+    'captions',
+    'data',
+    'result',
+  ];
   let collected = [];
 
   for (const key of keysToProbe) {
@@ -244,7 +258,10 @@ function collectCandidateSegments(value, seen = new Set()) {
     }
   }
 
-  const hasText = typeof value.text === 'string' || typeof value.snippet === 'string' || typeof value.content === 'string';
+  const hasText =
+    typeof value.text === 'string' ||
+    typeof value.snippet === 'string' ||
+    typeof value.content === 'string';
   if (hasText) {
     collected.unshift(value);
   }
@@ -256,7 +273,10 @@ function normalizeTranscriptSegments(result) {
   const rawSegments = collectCandidateSegments(result);
   const normalized = rawSegments
     .map(item => {
-      const text = he.decode(String(item?.text ?? item?.snippet ?? item?.content ?? '')).replace(/\s+/g, ' ').trim();
+      const text = he
+        .decode(String(item?.text ?? item?.snippet ?? item?.content ?? ''))
+        .replace(/\s+/g, ' ')
+        .trim();
       const start = Number(item?.start ?? item?.offset ?? item?.begin ?? item?.time ?? 0);
       const duration = Number(item?.duration ?? item?.length ?? 0);
       return {
@@ -286,21 +306,25 @@ function extractVideoId(url) {
   return null;
 }
 
-async function fetchVideoTitle(videoId) {
-  return withRetry(async () => {
-    const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-      signal: AbortSignal.timeout(8000),
-    });
-    const html = await res.text();
-    if (!res.ok) {
-      throw new Error(`YouTube title fetch failed with HTTP ${res.status}`);
-    }
-    const titleMatch = html.match(/<title>(.*?)<\/title>/i);
-    if (titleMatch) {
-      return he.decode(titleMatch[1].replace(/\s*[-|]\s*YouTube\s*/i, '').trim());
-    }
-    throw new Error('YouTube title not found');
-  }, { attempts: 2, baseDelayMs: 500, label: 'YouTube title fetch' });
+// eslint-disable-next-line no-unused-vars -- dead code: kept for future YouTube title feature
+async function _fetchVideoTitle(videoId) {
+  return withRetry(
+    async () => {
+      const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
+        signal: AbortSignal.timeout(8000),
+      });
+      const html = await res.text();
+      if (!res.ok) {
+        throw new Error(`YouTube title fetch failed with HTTP ${res.status}`);
+      }
+      const titleMatch = html.match(/<title>(.*?)<\/title>/i);
+      if (titleMatch) {
+        return he.decode(titleMatch[1].replace(/\s*[-|]\s*YouTube\s*/i, '').trim());
+      }
+      throw new Error('YouTube title not found');
+    },
+    { attempts: 2, baseDelayMs: 500, label: 'YouTube title fetch' },
+  );
 }
 
 const cache = new Map();
@@ -338,7 +362,7 @@ async function loadBuildInfo() {
 }
 
 function renderFallbackHtml(reason) {
-  const safeReason = he.encode(String(reason || 'Build artifacts are missing.')); 
+  const safeReason = he.encode(String(reason || 'Build artifacts are missing.'));
   return `<!doctype html>
 <html lang="pl">
 <head>
@@ -366,7 +390,10 @@ function sendIndexHtml(res) {
   if (fs.existsSync(INDEX_HTML_PATH)) {
     return res.sendFile(INDEX_HTML_PATH);
   }
-  res.status(503).type('html').send(renderFallbackHtml(`Missing ${INDEX_HTML_PATH}`));
+  res
+    .status(503)
+    .type('html')
+    .send(renderFallbackHtml(`Missing ${INDEX_HTML_PATH}`));
 }
 
 function isMissingTranscriptError(message) {
@@ -388,7 +415,9 @@ async function checkOmlx() {
       { attempts: 2, baseDelayMs: 500, label: 'oMLX probe' },
     );
 
-    const models = Array.isArray(data?.data) ? data.data.map(model => model?.id).filter(Boolean) : [];
+    const models = Array.isArray(data?.data)
+      ? data.data.map(model => model?.id).filter(Boolean)
+      : [];
     return {
       ok: true,
       state: 'connected',
@@ -455,9 +484,7 @@ function stripReasoningArtifacts(text) {
 
 function buildTranscriptResponse(videoId, result) {
   const snippets = normalizeTranscriptSegments(result);
-  const title = result?.videoDetails?.title
-    ? he.decode(String(result.videoDetails.title))
-    : null;
+  const title = result?.videoDetails?.title ? he.decode(String(result.videoDetails.title)) : null;
   return {
     videoId,
     title: title || `Video ${videoId}`,
@@ -498,7 +525,7 @@ app.get('/api/health', async (req, res) => {
 
 app.get('/api/lm-status', async (req, res) => {
   noCache(res);
-  res.json(await checkLMStudio());
+  res.json(await checkOmlx());
 });
 
 app.get('/api/transcript', async (req, res) => {
@@ -509,7 +536,9 @@ app.get('/api/transcript', async (req, res) => {
 
   const videoId = extractVideoId(String(url));
   if (!videoId) {
-    return res.status(400).json({ error: 'Invalid YouTube URL. Expected watch, youtu.be, embed, or shorts URL.' });
+    return res
+      .status(400)
+      .json({ error: 'Invalid YouTube URL. Expected watch, youtu.be, embed, or shorts URL.' });
   }
 
   try {
@@ -518,11 +547,12 @@ app.get('/api/transcript', async (req, res) => {
     if (cached) return res.json(cached);
 
     const result = await withRetry(
-      () => withTimeout(
-        () => fetchTranscript(videoId, { videoDetails: true }),
-        90000,
-        `Transcript fetch ${videoId}`,
-      ),
+      () =>
+        withTimeout(
+          () => fetchTranscript(videoId, { videoDetails: true }),
+          90000,
+          `Transcript fetch ${videoId}`,
+        ),
       {
         attempts: 3,
         baseDelayMs: 750,
@@ -561,9 +591,7 @@ const MAX_TRANSFORM_CHARS = 200_000;
 
 function rawTextGuard(req, _res, next) {
   const raw = req.body?.snippets;
-  const len = Array.isArray(raw)
-    ? raw.reduce((n, s) => n + String(s.text || '').length, 0)
-    : 0;
+  const len = Array.isArray(raw) ? raw.reduce((n, s) => n + String(s.text || '').length, 0) : 0;
   if (len > MAX_TRANSFORM_CHARS) {
     return _res.status(413).json({
       error: `Input too large (${len} chars). Max: ${MAX_TRANSFORM_CHARS} chars.`,
@@ -590,25 +618,31 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
   const promptDef = TRANSFORM_PROMPTS[type];
   const rawText = snippets.map(s => String(s.text || '')).join(' ');
   const userPrefix = promptDef.userPrefix;
-  const userSuffix = type === 'reconstruct'
-    ? 'Use paragraphs. Keep every meaning intact.'
-    : 'STRUCTURE: First write exactly one introductory paragraph (3-5 sentences) about the speaker/author/channel and the topic of the video. Then write the rest as thematic sections. Each section must use a bold header like **Theme Name:** followed by a concise paragraph of 2-4 sentences. Use blank lines between sections. Do NOT use bullet points. Do NOT return one continuous block of text.';
+  const userSuffix =
+    type === 'reconstruct'
+      ? 'Use paragraphs. Keep every meaning intact.'
+      : 'STRUCTURE: First write exactly one introductory paragraph (3-5 sentences) about the speaker/author/channel and the topic of the video. Then write the rest as thematic sections. Each section must use a bold header like **Theme Name:** followed by a concise paragraph of 2-4 sentences. Use blank lines between sections. Do NOT use bullet points. Do NOT return one continuous block of text.';
 
   let systemPrompt = promptDef.system;
   if (mode === 'translate') {
-    systemPrompt += type === 'reconstruct'
-      ? '\nTranslate the entire output into Polish. Return Polish only.'
-      : '\nTranslate the entire summary into Polish. Return Polish only.';
+    systemPrompt +=
+      type === 'reconstruct'
+        ? '\nTranslate the entire output into Polish. Return Polish only.'
+        : '\nTranslate the entire summary into Polish. Return Polish only.';
   }
 
-  const translationSuffix = mode === 'translate'
-    ? '\nOutput must be only in Polish. No English. No bilingual version. Preserve the same structure: one intro paragraph, then themed sections with bold headers and short paragraphs.'
-    : '';
+  const translationSuffix =
+    mode === 'translate'
+      ? '\nOutput must be only in Polish. No English. No bilingual version. Preserve the same structure: one intro paragraph, then themed sections with bold headers and short paragraphs.'
+      : '';
 
   const userPrompt = `${userPrefix}\n\n${rawText}\n\n${userSuffix}${translationSuffix}`;
 
   try {
-    const candidateModels = [OMLX_MODEL, ...OMLX_FALLBACK_MODELS.filter(model => model !== OMLX_MODEL)];
+    const candidateModels = [
+      OMLX_MODEL,
+      ...OMLX_FALLBACK_MODELS.filter(model => model !== OMLX_MODEL),
+    ];
     let data = null;
     let usedModel = null;
     let lastError = null;
@@ -616,9 +650,8 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
     for (const model of candidateModels) {
       try {
         data = await withRetry(
-          () => fetchJsonOnce(
-            `${OMLX_URL}/v1/chat/completions`,
-            {
+          () =>
+            fetchJsonOnce(`${OMLX_URL}/v1/chat/completions`, {
               method: 'POST',
               timeoutMs: 120000,
               headers: {
@@ -634,8 +667,7 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
                 temperature: 0.1,
                 max_tokens: 8192,
               }),
-            },
-          ),
+            }),
           {
             attempts: 2,
             baseDelayMs: 1200,
@@ -646,7 +678,10 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
         break;
       } catch (err) {
         lastError = err;
-        if (!isOmlxMemoryPressureError(err) || model === candidateModels[candidateModels.length - 1]) {
+        if (
+          !isOmlxMemoryPressureError(err) ||
+          model === candidateModels[candidateModels.length - 1]
+        ) {
           throw err;
         }
         console.warn(
@@ -713,7 +748,7 @@ function stripMarkdownForTTS(text) {
   return String(text || '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
     .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/^[#>\-\*]\s+/gm, '')
+    .replace(/^[#>*-]\s+/gm, '')
     .replace(/`([^`]+)`/g, '$1')
     .trim();
 }
@@ -730,14 +765,19 @@ function generateTTS(text, lang, outPath) {
     const args = ['-m', modelPath, '-c', configPath, '-f', outPath];
     const piper = spawn(PIPER_BIN, args);
     let stderr = '';
-    piper.stderr.on('data', d => { stderr += d; });
+    piper.stderr.on('data', d => {
+      stderr += d;
+    });
 
     const timeout = setTimeout(() => {
       piper.kill('SIGKILL');
       reject(new Error('TTS generation timed out (120s)'));
     }, 120000);
 
-    piper.on('error', err => { clearTimeout(timeout); reject(err); });
+    piper.on('error', err => {
+      clearTimeout(timeout);
+      reject(err);
+    });
     piper.on('close', code => {
       clearTimeout(timeout);
       if (code !== 0) reject(new Error(`Piper exited ${code}: ${stderr}`));
@@ -776,7 +816,7 @@ app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
   }
 
   try {
-    const detectedLang = (lang && TTS_VOICES[lang]) ? lang : detectLanguage(text);
+    const detectedLang = lang && TTS_VOICES[lang] ? lang : detectLanguage(text);
     const id = `${detectedLang}-${crypto.randomBytes(8).toString('hex')}`;
     const outPath = path.join(ttsCacheDir, `${id}.wav`);
     await generateTTS(stripMarkdownForTTS(text), detectedLang, outPath);
@@ -819,7 +859,9 @@ try {
     }
   }
   if (cleaned > 0) console.log(`Cleaned ${cleaned} old TTS cache files`);
-} catch { /* ignore */ }
+} catch {
+  /* ignore */
+}
 
 app.use((req, res) => {
   noCache(res);
@@ -863,7 +905,9 @@ server = app.listen(PORT, '0.0.0.0', () => {
 
 server.on('error', err => {
   if (err?.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use. Another ytTranscript instance may still be running.`);
+    console.error(
+      `Port ${PORT} is already in use. Another ytTranscript instance may still be running.`,
+    );
   } else {
     console.error('Server error:', err);
   }

@@ -30,7 +30,11 @@ function createBuildInfo() {
 const buildInfo = createBuildInfo();
 const publicDir = resolve(__dirname, 'public');
 mkdirSync(publicDir, { recursive: true });
-writeFileSync(resolve(publicDir, 'build-version.json'), `${JSON.stringify(buildInfo, null, 2)}\n`, 'utf8');
+writeFileSync(
+  resolve(publicDir, 'build-version.json'),
+  `${JSON.stringify(buildInfo, null, 2)}\n`,
+  'utf8',
+);
 console.log(`build-info: ${buildInfo.version}`);
 
 export default defineConfig({

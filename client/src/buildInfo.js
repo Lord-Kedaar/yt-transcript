@@ -7,8 +7,8 @@ const fallbackBuildInfo = {
   port: 4000,
 };
 
-export const BUILD_INFO = typeof __BUILD_INFO__ !== 'undefined'
-  ? __BUILD_INFO__
-  : fallbackBuildInfo;
+/* global __BUILD_INFO__: readonly */
+export const BUILD_INFO =
+  typeof __BUILD_INFO__ !== 'undefined' ? __BUILD_INFO__ : fallbackBuildInfo;
 
 export default BUILD_INFO;

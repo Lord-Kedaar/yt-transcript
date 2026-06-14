@@ -13,7 +13,7 @@ const info = {
   name: 'yt-transcript',
   version: '3.2.0',
   builtAt: new Date().toISOString(),
-  note: 'Build metadata is refreshed on launch; the SPA remains static.'
+  note: 'Build metadata is refreshed on launch; the SPA remains static.',
 };
 
 fs.writeFileSync(out, JSON.stringify(info, null, 2) + '\n', 'utf8');

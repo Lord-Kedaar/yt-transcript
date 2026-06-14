@@ -26,8 +26,12 @@ export function useTTS({ text, lang }) {
         const audio = new Audio(data.audioUrl);
         currentAudio = audio;
         audio.play();
-        audio.addEventListener('ended', () => { currentAudio = null; });
-        audio.addEventListener('error', () => { currentAudio = null; });
+        audio.addEventListener('ended', () => {
+          currentAudio = null;
+        });
+        audio.addEventListener('error', () => {
+          currentAudio = null;
+        });
       } catch (err) {
         console.error('TTS error:', err);
         throw err;

@@ -3,6 +3,7 @@
 ## Unreleased — 2026-06-14
 
 ### Documentation
+
 - **Corrected doc/code drift** — `CHANGELOG.md` v3.2.1 and
   `docs/SECURITY_NOTES.md` both claimed the hardcoded `'0456'` fallback
   was removed in v3.2.1, but `server.js:23` still contains
@@ -15,6 +16,7 @@
 ## 3.2.1 — 2026-06-12
 
 ### Security
+
 - **Intended: remove hardcoded API key fallback** — the `'0456'` literal
   in `OMLX_API_KEY = ... || '0456'` was a real-world anti-pattern
   (BURDEL rule: no secrets in repo). The fallback is now an empty
@@ -24,6 +26,7 @@
   re-planned in the 2026-06-14 audit follow-up, Phase 1._
 
 ### Added
+
 - **TTS endpoint restored** — `POST /api/tts` and `GET /api/audio/:id`
   were missing from the oMLX migration; the frontend hook
   (`useTTS.js`) was calling an endpoint that didn't exist. Implemented
@@ -55,8 +58,19 @@
   `localhost`; `allowedHosts` defaults to `false`; both opt-in to `0.0.0.0`
   via `VITE_EXPOSE=1` env var.
 - **Phase 2: Vite upgraded** — `5.x → 6.4.3` (patches high-severity esbuild advisory).
+- **Phase 3: PDF XSS fixed** — `innerHTML` now uses `escapeHtml`
+  (HTML-encodes `<`, `>`, `&`, `"`) before markdown transforms.
+- **Phase 3: ESLint + Prettier added** — `eslint@8` + `prettier`,
+  `npm run lint` / `npm run format` / `npm run format:check`.
+  React Hooks exhaustive-deps warnings remain (require larger refactor).
+- **Phase 3: CI added** — `.github/workflows/ci.yml`: lint, format check,
+  client tests, build on every push/PR to master.
+- **Phase 3: Repo cleanup** — removed `docs/legacy-server-pre-memory-fallback.js.bak`,
+  `.env.backup-*` files; `.eslintrc.cjs`, `.prettierrc`, `.prettierignore`,
+  `.eslintignore` added to `.gitignore`.
 
 ### Changed
+
 - **README rewritten** — now points to `docs/` for deep dives and
   includes the portfolio card (problem / approach / tools / result /
   value / limitations / privacy / status).
@@ -64,6 +78,7 @@
   documented as legacy fallback aliases.
 
 ### Cleanup
+
 - Removed 7 stale `*.bak.*` files from earlier debug sessions.
 - Removed `.write-test` and `.write-test-2` scratch files.
 - Removed `package 2.json` (a typo'd duplicate).
@@ -73,11 +88,13 @@
 ## 3.2.0 — 2026-06-08
 
 ### Frontend loading feedback and Safari resume recovery
+
 - AI reconstruction and summarization now show an animated progress indicator plus a live seconds counter while work runs.
 - In-flight AI jobs are persisted across Safari/background-tab suspension and restored on return, preventing the summary/reconstruction crash path.
 - oMLX transform requests now retry with smaller fallback models when the primary model is rejected by memory pressure.
 
 ### Hardened startup and error handling
+
 - `npm start` now runs the build step before starting the backend.
 - `manage.sh start` and `start.sh` now use the canonical build-first launch path.
 - `server.js` retries transient transcript and oMLX failures instead of failing immediately.
@@ -87,5 +104,6 @@
 - launchd stdout/stderr now go to `/tmp/yt-transcript/` instead of the project tree, avoiding filesystem deadlocks in the supervisor path.
 
 ### Operational notes
+
 - The app remains single-port on `:4000`.
 - Health responses now distinguish `ok` from `degraded` when oMLX is temporarily unavailable.

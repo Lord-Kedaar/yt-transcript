@@ -20,16 +20,18 @@ export default function TranscriptPanel({ snippets }) {
         <h3>Transcript</h3>
         <span className="snippet-count">{snippets.length} segments</span>
       </div>
-      
-      <div 
+
+      <div
         ref={panelRef}
         className="transcript-panel"
-        onScroll={(e) => {
+        onScroll={e => {
           const el = e.target;
           const scrollPercent = el.scrollTop / (el.scrollHeight - el.clientHeight);
-          document.dispatchEvent(new CustomEvent('scroll-percent', { 
-            detail: scrollPercent 
-          }));
+          document.dispatchEvent(
+            new CustomEvent('scroll-percent', {
+              detail: scrollPercent,
+            }),
+          );
         }}
       >
         <div className="transcript-content">
@@ -38,13 +40,9 @@ export default function TranscriptPanel({ snippets }) {
               key={index}
               className={`transcript-segment ${highlightedIndex === index ? 'active' : ''}`}
               onMouseEnter={() => setHighlightedIndex(index)}
-              onClick={() => setHighlightedIndex(
-                highlightedIndex === index ? null : index
-              )}
+              onClick={() => setHighlightedIndex(highlightedIndex === index ? null : index)}
             >
-              <span className="timestamp">
-                {formatTime(snippet.start)}
-              </span>
+              <span className="timestamp">{formatTime(snippet.start)}</span>
               <span className="segment-text">{snippet.text}</span>
             </div>
           ))}
@@ -55,7 +53,7 @@ export default function TranscriptPanel({ snippets }) {
         <div className="transcript-footer">
           <span>
             Highlighted: &ldquo;{snippets[highlightedIndex]?.text?.slice(0, 60)}
-              {snippets[highlightedIndex]?.text?.length > 60 ? '...' : ''}&rdquo;
+            {snippets[highlightedIndex]?.text?.length > 60 ? '...' : ''}&rdquo;
           </span>
         </div>
       )}

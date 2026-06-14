@@ -34,6 +34,7 @@ Browser → Cloudflare edge (Turnstile, rate limit) → Tunnel
 ```
 
 The public backend is a thin wrapper around the same `server.js` with:
+
 - `ENABLE_TTS=false`
 - `PROVIDER=groq` (after multi-provider adapter is built)
 - `RATE_LIMIT_PER_MIN=5`
@@ -43,11 +44,11 @@ The public backend is a thin wrapper around the same `server.js` with:
 
 ## Provider choice (recap; see PROVIDER_MATRIX.md)
 
-| Need | Provider | Reason |
-|---|---|---|
-| LLM in public demo | Groq (planned) | 840 tok/s, lowest cost |
-| LLM in private | local oMLX | zero cost, zero egress |
-| TTS in public demo | skip | not worth the cost in MVP |
+| Need               | Provider       | Reason                    |
+| ------------------ | -------------- | ------------------------- |
+| LLM in public demo | Groq (planned) | 840 tok/s, lowest cost    |
+| LLM in private     | local oMLX     | zero cost, zero egress    |
+| TTS in public demo | skip           | not worth the cost in MVP |
 
 ## What we will NOT deploy until further notice
 
@@ -71,6 +72,7 @@ The public backend is a thin wrapper around the same `server.js` with:
 ## Rollback plan
 
 If the public demo misbehaves:
+
 1. Set `PUBLIC_DEMO_ENABLED=false` in `.env`.
 2. Restart the public backend — the route is no longer served.
 3. Optionally tear down the Cloudflare Tunnel via the dashboard.
