@@ -29,8 +29,7 @@ For prerequisites, env vars, troubleshooting — see **[docs/LOCAL_SETUP.md](doc
 
 ## Audit follow-up (2026-06-14)
 
-A repo audit identified 9 issues, ordered into 4 phases. Tracked in
-`STATE_LOG.md` (entry 2026-06-14). Current state:
+A repo audit identified 9 issues, ordered into 4 phases. Current state:
 
 | Phase | Scope | Status |
 |---|---|---|
