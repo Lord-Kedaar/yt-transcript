@@ -1,13 +1,27 @@
 # Changelog
 
+## Unreleased — 2026-06-14
+
+### Documentation
+- **Corrected doc/code drift** — `CHANGELOG.md` v3.2.1 and
+  `docs/SECURITY_NOTES.md` both claimed the hardcoded `'0456'` fallback
+  was removed in v3.2.1, but `server.js:23` still contains
+  `process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY || '0456'`.
+  Both documents now correctly mark the fallback as "Still present" and
+  point to the audit follow-up plan below.
+- **Added audit follow-up plan** — see README → "Audit follow-up
+  (2026-06-14)" section.
+
 ## 3.2.1 — 2026-06-12
 
 ### Security
-- **Removed hardcoded API key fallback** — the `'0456'` literal in
-  `OMLX_API_KEY = ... || '0456'` was a real-world anti-pattern
+- **Intended: remove hardcoded API key fallback** — the `'0456'` literal
+  in `OMLX_API_KEY = ... || '0456'` was a real-world anti-pattern
   (BURDEL rule: no secrets in repo). The fallback is now an empty
-  string; operators must set the key in `.env` if their oMLX
-  requires auth.
+  string; operators must set the key in `.env` if their oMLX requires
+  auth. _Note: this change was reported as done in 3.2.1 but the
+  fallback line was not actually removed from the file. The fix is
+  re-planned in the 2026-06-14 audit follow-up, Phase 1._
 
 ### Added
 - **TTS endpoint restored** — `POST /api/tts` and `GET /api/audio/:id`

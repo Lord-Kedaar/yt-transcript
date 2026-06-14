@@ -16,7 +16,7 @@ The app is a personal local prototype. Primary threats:
 
 | Threat | Control | Where |
 |---|---|---|
-| Secret leakage | `.env` is gitignored, `.env.example` is empty for keys | `.gitignore`, `server.js` line 19 |
+| Secret leakage | `.env` is gitignored, `.env.example` is empty for keys | `.gitignore`, `server.js` line 23 |
 | Path traversal on `/api/audio/:id` | id must match `^[A-Za-z0-9-]+$` | `server.js` (TTS section) |
 | Missing oMLX key | When `OMLX_API_KEY` is empty, no `Authorization` header is sent (oMLX allows this) | `server.js` transform + probe |
 | Crash from oMLX being down | `/api/health` returns `degraded`; `/api/transform` returns 502 | `server.js` |
@@ -28,14 +28,25 @@ The app is a personal local prototype. Primary threats:
 
 ## Findings from 2026-06-12 audit
 
+> ⚠️ **Doc/code drift (corrected 2026-06-14):** the 2026-06-12 review
+> claimed the hardcoded fallback was removed, but the code at
+> `server.js:23` still contains `|| '0456'`. Moved back to "Still
+> present". See audit follow-up plan in `README.md`.
+
 ### Resolved
 
-- **Hardcoded fallback API key `'0456'` removed** (server.js:19). The
-  fallback is now an empty string; users must set `OMLX_API_KEY` in
-  `.env` if their oMLX deployment requires auth.
+_(none as of 2026-06-14 — entries below were mis-categorized)_
+
+- ~~Hardcoded fallback API key `'0456'` removed (server.js:19)~~ —
+  **NOT RESOLVED**, see "Still present" below.
 
 ### Still present (acceptable for local prototype)
 
+- **Hardcoded fallback API key `'0456'` at `server.js:23`** — the line is
+  `const OMLX_API_KEY = process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY || '0456';`.
+  Fine for personal local use (matches user's oMLX setup), but must be
+  removed before any public/demo deploy. **Planned for removal in
+  Phase 1 of the 2026-06-14 audit follow-up plan** (see `README.md`).
 - **CORS is `*`** — fine for local dev, would need to be locked to
   `https://transcript.radoslaw-pleskot.com` before any public deploy.
 - **No rate limit** on `/api/transform` — a misbehaving client could

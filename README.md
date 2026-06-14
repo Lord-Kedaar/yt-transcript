@@ -27,6 +27,22 @@ summary — all in one place, all on your own machine.
 
 For prerequisites, env vars, troubleshooting — see **[docs/LOCAL_SETUP.md](docs/LOCAL_SETUP.md)**.
 
+## Audit follow-up (2026-06-14)
+
+A repo audit identified 9 issues, ordered into 4 phases. Tracked in
+`STATE_LOG.md` (entry 2026-06-14). Current state:
+
+| Phase | Scope | Status |
+|---|---|---|
+| 0 | Documentation sync (this PR) | ✅ done |
+| 1 | Remove hardcoded fallback, cache LRU + hash key | ⏳ planned |
+| 2 | CORS/host/allowedHosts tightening, rate limits, Vite upgrade | ⏳ planned |
+| 3 | ESLint/Prettier, CI, PDF XSS fix, repo cleanup | ⏳ planned |
+
+See `docs/SECURITY_NOTES.md` for the corrected findings (the previous
+v3.2.1 entry claiming the fallback was removed is **incorrect** — the
+fallback is still in `server.js:23` and will be removed in Phase 1).
+
 ## Documentation
 
 | File | Purpose |
