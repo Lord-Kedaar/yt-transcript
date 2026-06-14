@@ -40,6 +40,12 @@
 - **`.env.example` updated** — now includes `PIPER_BIN` and
   `PIPER_MODELS_DIR`; documents the `LM_STUDIO_*` legacy aliases.
 
+### Security
+- **Phase 1: Remove hardcoded `'0456'` fallback** — replaced with
+  empty string; oMLX allows unauthenticated requests locally.
+- **Phase 1: Bounded cache** — SHA-256/32 hash replaces base64 text
+  as cache key; LRU eviction at 200 entries prevents unbounded growth.
+
 ### Changed
 - **README rewritten** — now points to `docs/` for deep dives and
   includes the portfolio card (problem / approach / tools / result /

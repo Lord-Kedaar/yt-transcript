@@ -18,9 +18,9 @@ const OMLX_FALLBACK_MODELS = [
   'gemma-4-12B-it-assistant-nvfp4',
   'Qwen3.5-4B-mlx-lm-nvfp4',
 ];
-// Test-value fallback (matches user's local oMLX setup). Operators
-// must override via OMLX_API_KEY env in production.
-const OMLX_API_KEY = process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY || '0456';
+// No hardcoded fallback — operators must set OMLX_API_KEY in production.
+// oMLX allows unauthenticated requests (empty Bearer is accepted locally).
+const OMLX_API_KEY = process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY || '';
 const BUILD_INFO_PATH = path.join(__dirname, 'client', 'dist', 'build-info.json');
 const INDEX_HTML_PATH = path.join(__dirname, 'client', 'dist', 'index.html');
 
@@ -280,6 +280,12 @@ async function fetchVideoTitle(videoId) {
 
 const cache = new Map();
 const CACHE_TTL_MS = Number(process.env.CACHE_TTL_MINUTES || 60) * 60 * 1000;
+const MAX_CACHE_ENTRIES = 200;
+
+function hashKey(text) {
+  // SHA-256 truncated to 32 chars — compact, collision-resistant.
+  return crypto.createHash('sha256').update(text).digest('hex').slice(0, 32);
+}
 
 function getCached(key) {
   const entry = cache.get(key);
@@ -289,6 +295,11 @@ function getCached(key) {
 }
 
 function setCache(key, value, ttlMs = CACHE_TTL_MS) {
+  // Evict oldest entry when at capacity (LRU approximation).
+  if (cache.size >= MAX_CACHE_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    cache.delete(oldest);
+  }
   cache.set(key, { value, expires: Date.now() + ttlMs });
 }
 
@@ -626,7 +637,7 @@ app.post('/api/transform', async (req, res) => {
     }
 
     const responseKey = type === 'reconstruct' ? 'reconstructed' : 'summary';
-    const cacheKey = `${type}:${mode}:${Buffer.from(rawText).toString('base64')}`;
+    const cacheKey = `${type}:${mode}:${hashKey(rawText)}`;
     setCache(cacheKey, { [responseKey]: output, snippetCount: snippets.length, model: usedModel });
 
     res.json({
