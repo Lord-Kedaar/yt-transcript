@@ -35,7 +35,7 @@ A repo audit identified 9 issues, ordered into 4 phases. Current state:
 |---|---|---|
 | 0 | Documentation sync (this PR) | ✅ done |
 | 1 | Remove hardcoded fallback, cache LRU + hash key | ⏳ planned |
-| 2 | CORS/host/allowedHosts tightening, rate limits, Vite upgrade | ⏳ planned |
+| 2 | CORS/host/allowedHosts tightening, rate limits, Vite upgrade | ✅ done |
 | 3 | ESLint/Prettier, CI, PDF XSS fix, repo cleanup | ⏳ planned |
 
 See `docs/SECURITY_NOTES.md` for the corrected findings (the previous
