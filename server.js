@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import express from 'express';
 import cors from 'cors';
 import { fetchTranscript } from 'youtube-transcript-plus';
+import rateLimit from 'express-rate-limit';
 import he from 'he';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,30 @@ const TTS_VOICES = {
 };
 const ttsCacheDir = '/tmp/tts-cache';
 fs.mkdirSync(ttsCacheDir, { recursive: true });
+
+// ── Security: CORS (default: local dev, lock to env in production) ──────────
+const CORS_ORIGIN = process.env.CORS_ORIGIN || (
+  process.env.NODE_ENV === 'production'
+    ? 'https://transcript.radoslaw-pleskot.com'
+    : '*'
+);
+
+// ── Security: Rate limiting ─────────────────────────────────────────────────
+const transformLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many transform requests. Limit: 10/min. Pause and retry.' },
+});
+
+const ttsLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many TTS requests. Limit: 5/min. Pause and retry.' },
+});
 function piperAvailable() {
   try {
     return fs.existsSync(PIPER_BIN);
@@ -54,7 +79,7 @@ const TRANSCRIPT_MISSING_PATTERNS = [
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
 
 app.disable('x-powered-by');
-app.use(cors({ origin: '*' }));
+app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json({ limit: '16mb' }));
 // Serve static assets from build output
 app.use('/assets', express.static(path.join(__dirname, 'client', 'dist', 'assets'), { immutable: true, maxAge: '1y' }));
@@ -531,7 +556,23 @@ app.get('/api/transcript', async (req, res) => {
   }
 });
 
-app.post('/api/transform', async (req, res) => {
+// ── Input length guard (before the route to catch oversized bodies) ────────────
+const MAX_TRANSFORM_CHARS = 200_000;
+
+function rawTextGuard(req, _res, next) {
+  const raw = req.body?.snippets;
+  const len = Array.isArray(raw)
+    ? raw.reduce((n, s) => n + String(s.text || '').length, 0)
+    : 0;
+  if (len > MAX_TRANSFORM_CHARS) {
+    return _res.status(413).json({
+      error: `Input too large (${len} chars). Max: ${MAX_TRANSFORM_CHARS} chars.`,
+    });
+  }
+  next();
+}
+
+app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
   noCache(res);
   const { snippets, type, mode = 'original' } = req.body || {};
   if (!Array.isArray(snippets) || snippets.length === 0) {
@@ -708,7 +749,19 @@ function generateTTS(text, lang, outPath) {
   });
 }
 
-app.post('/api/tts', async (req, res) => {
+const MAX_TTS_CHARS = 50_000;
+
+function ttsBodyGuard(req, _res, next) {
+  const len = String(req.body?.text || '').length;
+  if (len > MAX_TTS_CHARS) {
+    return _res.status(413).json({
+      error: `Text too large (${len} chars). Max: ${MAX_TTS_CHARS} chars.`,
+    });
+  }
+  next();
+}
+
+app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
   noCache(res);
   const { text, lang } = req.body || {};
   if (!text || typeof text !== 'string' || text.trim().length === 0) {

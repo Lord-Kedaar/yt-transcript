@@ -45,6 +45,16 @@
   empty string; oMLX allows unauthenticated requests locally.
 - **Phase 1: Bounded cache** — SHA-256/32 hash replaces base64 text
   as cache key; LRU eviction at 200 entries prevents unbounded growth.
+- **Phase 2: CORS env-driven** — `CORS_ORIGIN` env var (default `*` dev,
+  `https://transcript.radoslaw-pleskot.com` when `NODE_ENV=production`).
+- **Phase 2: Rate limiting** — `/api/transform`: 10 req/min per IP;
+  `/api/tts`: 5 req/min per IP (new `express-rate-limit` dep).
+- **Phase 2: Input length guards** — max 200k chars on `/api/transform`,
+  max 50k chars on `/api/tts` (413 on breach).
+- **Phase 2: Vite dev-surface tightened** — `host` defaults to
+  `localhost`; `allowedHosts` defaults to `false`; both opt-in to `0.0.0.0`
+  via `VITE_EXPOSE=1` env var.
+- **Phase 2: Vite upgraded** — `5.x → 6.4.3` (patches high-severity esbuild advisory).
 
 ### Changed
 - **README rewritten** — now points to `docs/` for deep dives and

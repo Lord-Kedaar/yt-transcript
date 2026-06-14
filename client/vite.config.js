@@ -41,13 +41,13 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    emptyOutDir: false,
+    emptyOutDir: true, // was false (stale asset risk, audit #8)
   },
   server: {
     port: 4001,
     strictPort: true,
-    host: '0.0.0.0',
-    allowedHosts: true,
+    host: process.env.VITE_EXPOSE === '1' ? '0.0.0.0' : 'localhost',
+    allowedHosts: process.env.VITE_EXPOSE === '1' ? true : false,
     proxy: {
       '/api': {
         target: 'http://localhost:4000',
