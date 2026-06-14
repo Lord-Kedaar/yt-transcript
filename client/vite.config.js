@@ -35,8 +35,13 @@ console.log(`build-info: ${buildInfo.version}`);
 
 export default defineConfig({
   plugins: [react()],
+  base: '/',
   define: {
     __BUILD_INFO__: JSON.stringify(buildInfo),
+  },
+  build: {
+    outDir: 'dist',
+    emptyOutDir: false,
   },
   server: {
     port: 4001,

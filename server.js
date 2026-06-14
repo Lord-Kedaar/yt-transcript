@@ -381,7 +381,9 @@ Instructions:
 - Do not summarize.
 - Do not add commentary.
 - Return plain text only.
-- If the user requests translation, translate the reconstructed text into Polish while preserving meaning.
+- If translation is requested, output ONLY the final Polish text.
+- Never output both languages.
+- Do not add labels like "Translation" or "Tłumaczenie".
 `,
     userPrefix: 'Reconstruct this transcript into readable paragraphs.',
   },
@@ -389,11 +391,17 @@ Instructions:
     system: `You are a summarization assistant.
 
 Instructions:
-- Produce a detailed summary with bullet points.
-- Cover all major themes and consequences.
+- Produce a comprehensive summary in short thematic paragraphs, not as a single wall of text.
+- Begin with exactly one introductory paragraph (3-5 sentences) identifying the speaker/author/channel and the main topic of the video, based only on the transcript.
+- After the introduction, cover each major theme in its own section.
+- Each section must have a short bold header in the form **Theme Name:** followed by a concise paragraph of 2-4 sentences.
+- Cover all major themes, arguments, findings, caveats, and consequences.
 - Match the transcript language unless translation is requested.
 - Return plain text only.
-- No code blocks, no JSON, no commentary.
+- No code blocks, no JSON, no meta-commentary.
+- If translation is requested, output ONLY the final Polish summary.
+- Never output both languages.
+- Do not add labels like "Summary", "Translation", "Podsumowanie" or "Tłumaczenie".
 `,
     userPrefix: 'Summarize this transcript.',
   },
@@ -532,16 +540,20 @@ app.post('/api/transform', async (req, res) => {
   const userPrefix = promptDef.userPrefix;
   const userSuffix = type === 'reconstruct'
     ? 'Use paragraphs. Keep every meaning intact.'
-    : 'Use bullet points. Be comprehensive.';
+    : 'STRUCTURE: First write exactly one introductory paragraph (3-5 sentences) about the speaker/author/channel and the topic of the video. Then write the rest as thematic sections. Each section must use a bold header like **Theme Name:** followed by a concise paragraph of 2-4 sentences. Use blank lines between sections. Do NOT use bullet points. Do NOT return one continuous block of text.';
 
   let systemPrompt = promptDef.system;
   if (mode === 'translate') {
     systemPrompt += type === 'reconstruct'
-      ? '\nTranslate the entire output into Polish.'
-      : '\nTranslate the entire summary into Polish.';
+      ? '\nTranslate the entire output into Polish. Return Polish only.'
+      : '\nTranslate the entire summary into Polish. Return Polish only.';
   }
 
-  const userPrompt = `${userPrefix}\n\n${rawText}\n\n${userSuffix}`;
+  const translationSuffix = mode === 'translate'
+    ? '\nOutput must be only in Polish. No English. No bilingual version. Preserve the same structure: one intro paragraph, then themed sections with bold headers and short paragraphs.'
+    : '';
+
+  const userPrompt = `${userPrefix}\n\n${rawText}\n\n${userSuffix}${translationSuffix}`;
 
   try {
     const candidateModels = [OMLX_MODEL, ...OMLX_FALLBACK_MODELS.filter(model => model !== OMLX_MODEL)];

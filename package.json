@@ -7,7 +7,7 @@
   "scripts": {
     "start": "npm run build && node server.js",
     "start:direct": "node server.js",
-    "build": "node scripts/build.js",
+    "build": "node scripts/build.js && npm --prefix client run build",
     "dev": "node scripts/dev-disabled.mjs",
     "dev:client": "node scripts/dev-disabled.mjs"
   },
