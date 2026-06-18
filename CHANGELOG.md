@@ -1,19 +1,6 @@
 # Changelog
 
-## Unreleased — 2026-06-14
-
-### Documentation
-
-- **Corrected doc/code drift** — `CHANGELOG.md` v3.2.1 and
-  `docs/SECURITY_NOTES.md` both claimed the hardcoded `'0456'` fallback
-  was removed in v3.2.1, but `server.js:23` still contains
-  `process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY || '0456'`.
-  Both documents now correctly mark the fallback as "Still present" and
-  point to the audit follow-up plan below.
-- **Added audit follow-up plan** — see README → "Audit follow-up
-  (2026-06-14)" section.
-
-## 3.2.1 — 2026-06-12
+## 3.2.1 — 2026-06-18
 
 ### Security
 

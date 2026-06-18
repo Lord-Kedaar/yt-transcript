@@ -13,12 +13,25 @@ import he from 'he';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
+
+// ─── LLM Provider Config (env-driven) ───────────────────────────
+// Supported providers: 'omlx' | 'freellmapi'
+// Switch by setting LLM_PROVIDER env var. Defaults to 'omlx' for backwards compat.
+const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'omlx').toLowerCase();
+
+// oMLX settings (used when LLM_PROVIDER=omlx)
 const OMLX_URL = process.env.OMLX_URL || process.env.LM_STUDIO_URL || 'http://localhost:8585';
 const OMLX_MODEL = process.env.OMLX_MODEL || process.env.LM_STUDIO_MODEL || 'gemma-4-12B-it-nvfp4';
 const OMLX_FALLBACK_MODELS = ['gemma-4-12B-it-assistant-nvfp4', 'Qwen3.5-4B-mlx-lm-nvfp4'];
-// No hardcoded fallback — operators must set OMLX_API_KEY in production.
-// oMLX allows unauthenticated requests (empty Bearer is accepted locally).
 const OMLX_API_KEY = process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY || '';
+
+// FreeLLMAPI settings (used when LLM_PROVIDER=freellmapi)
+// Base URL of the FreeLLMAPI server + API key for Authorization header.
+const FREELLMAPI_URL = process.env.FREELLMAPI_URL || 'http://127.0.0.1:3001';
+const FREELLMAPI_API_KEY = process.env.FREELLMAPI_API_KEY || '';
+// 'auto' = FreeLLMAPI auto-selects the best free provider per request.
+const FREELLMAPI_MODEL = process.env.FREELLMAPI_MODEL || 'auto';
+
 const BUILD_INFO_PATH = path.join(__dirname, 'client', 'dist', 'build-info.json');
 const INDEX_HTML_PATH = path.join(__dirname, 'client', 'dist', 'index.html');
 
@@ -226,6 +239,125 @@ async function fetchJsonWithRetry(url, options = {}, retryOptions = {}) {
   return withRetry(() => fetchJsonOnce(url, options), retryOptions);
 }
 
+// ─── LLM Provider Abstraction Layer ───────────────────────────────
+// Architecture: one factory function per provider returns a normalised
+// { chat(messages, opts), health() } interface.
+// callers (checkProvider, /api/transform) call llmProvider().chat(...) regardless
+// of which backend is configured.
+
+/**
+ * Build the active LLM provider from env (LLM_PROVIDER=omlx|freellmapi).
+ * Cached after first call — env vars are read once at startup.
+ */
+function buildLlmProvider() {
+  if (LLM_PROVIDER === 'freellmapi') {
+    return buildFreeLLMAPIProvider();
+  }
+  return buildOmlxProvider(); // default / omlx
+}
+
+// ── oMLX provider ─────────────────────────────────────────────────
+
+function buildOmlxProvider() {
+  return {
+    name: 'oMLX',
+    async chat(messages, { timeoutMs = 120000, retryOpts = {} } = {}) {
+      const candidateModels = [
+        OMLX_MODEL,
+        ...OMLX_FALLBACK_MODELS.filter(m => m !== OMLX_MODEL),
+      ];
+      let lastError;
+      for (const model of candidateModels) {
+        try {
+          const data = await withRetry(
+            () =>
+              fetchJsonOnce(`${OMLX_URL}/v1/chat/completions`, {
+                method: 'POST',
+                timeoutMs,
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(OMLX_API_KEY ? { Authorization: `Bearer ${OMLX_API_KEY}` } : {}),
+                },
+                body: JSON.stringify({ model, messages, temperature: 0.1, max_tokens: 8192 }),
+              }),
+            { attempts: 2, baseDelayMs: 1200, label: `oMLX chat (${model})`, ...retryOpts },
+          );
+          return { content: data?.choices?.[0]?.message?.content ?? '', raw: data, model };
+        } catch (err) {
+          lastError = err;
+          if (!isOmlxMemoryPressureError(err) || model === candidateModels[candidateModels.length - 1]) {
+            throw err;
+          }
+          console.warn(`oMLX model ${model} OOM; trying next fallback: ${getErrorMessage(err)}`);
+        }
+      }
+      throw lastError;
+    },
+
+    async health() {
+      try {
+        const data = await fetchJsonWithRetry(
+          `${OMLX_URL}/v1/models`,
+          { method: 'GET', timeoutMs: 6000, headers: { Authorization: `Bearer ${OMLX_API_KEY}` } },
+          { attempts: 2, baseDelayMs: 500, label: 'oMLX probe' },
+        );
+        const models = Array.isArray(data?.data) ? data.data.map(m => m?.id).filter(Boolean) : [];
+        return { ok: true, state: 'connected', loaded: models.includes(OMLX_MODEL), models, modelCount: models.length };
+      } catch (err) {
+        return { ok: false, state: 'unreachable', error: getErrorMessage(err), retryable: isRetryableError(err) };
+      }
+    },
+  };
+}
+
+// ── FreeLLMAPI provider ───────────────────────────────────────────
+
+function buildFreeLLMAPIProvider() {
+  return {
+    name: 'FreeLLMAPI',
+    async chat(messages, { timeoutMs = 120000, retryOpts = {} } = {}) {
+      const data = await withRetry(
+        () =>
+          fetchJsonOnce(`${FREELLMAPI_URL}/v1/chat/completions`, {
+            method: 'POST',
+            timeoutMs,
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${FREELLMAPI_API_KEY}`,
+            },
+            body: JSON.stringify({ model: FREELLMAPI_MODEL, messages, temperature: 0.1, max_tokens: 8192 }),
+          }),
+        { attempts: 2, baseDelayMs: 1200, label: 'FreeLLMAPI chat', ...retryOpts },
+      );
+      const model = data?.model || FREELLMAPI_MODEL;
+      return { content: data?.choices?.[0]?.message?.content ?? '', raw: data, model };
+    },
+
+    async health() {
+      try {
+        // FreeLLMAPI has no dedicated health endpoint; a lightweight /v1/models probe
+        // with an invalid key returns fast. We use a trivial chat call instead.
+        await fetchJsonOnce(`${FREELLMAPI_URL}/v1/chat/completions`, {
+          method: 'POST',
+          timeoutMs: 8000,
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${FREELLMAPI_API_KEY}` },
+          body: JSON.stringify({
+            model: FREELLMAPI_MODEL,
+            messages: [{ role: 'user', content: 'ping' }],
+            max_tokens: 2,
+          }),
+        });
+        return { ok: true, state: 'connected', loaded: true };
+      } catch (err) {
+        return { ok: false, state: 'unreachable', error: getErrorMessage(err), retryable: isRetryableError(err) };
+      }
+    },
+  };
+}
+
+// Singleton — built once at startup
+const llmProvider = buildLlmProvider();
+
 function collectCandidateSegments(value, seen = new Set()) {
   if (!value || typeof value !== 'object') {
     return [];
@@ -401,39 +533,9 @@ function isMissingTranscriptError(message) {
   return TRANSCRIPT_MISSING_PATTERNS.some(pattern => lower.includes(pattern));
 }
 
+/** Wraps llmProvider.health() — kept for backwards compat with existing route handlers. */
 async function checkOmlx() {
-  try {
-    const data = await fetchJsonWithRetry(
-      `${OMLX_URL}/v1/models`,
-      {
-        method: 'GET',
-        timeoutMs: 6000,
-        headers: {
-          Authorization: `Bearer ${OMLX_API_KEY}`,
-        },
-      },
-      { attempts: 2, baseDelayMs: 500, label: 'oMLX probe' },
-    );
-
-    const models = Array.isArray(data?.data)
-      ? data.data.map(model => model?.id).filter(Boolean)
-      : [];
-    return {
-      ok: true,
-      state: 'connected',
-      requested: OMLX_MODEL,
-      loaded: models.includes(OMLX_MODEL),
-      models,
-      modelCount: models.length,
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      state: 'unreachable',
-      error: getErrorMessage(err),
-      retryable: isRetryableError(err),
-    };
-  }
+  return llmProvider.health();
 }
 
 const TRANSFORM_PROMPTS = {
@@ -498,7 +600,7 @@ app.get('/api/build-version', async (req, res) => {
   noCache(res);
   const info = (await loadBuildInfo()) || {
     name: 'yt-transcript',
-    version: '3.2.0',
+    version: '3.2.1',
     builtAt: null,
   };
   res.json({
@@ -513,10 +615,10 @@ app.get('/api/health', async (req, res) => {
   const lmStatus = await checkOmlx();
   res.json({
     status: lmStatus.ok ? 'ok' : 'degraded',
-    provider: 'oMLX',
+    provider: llmProvider.name,
     providerState: lmStatus.state,
     providerDetails: lmStatus,
-    model: OMLX_MODEL,
+    model: LLM_PROVIDER === 'freellmapi' ? FREELLMAPI_MODEL : OMLX_MODEL,
     buildVersion: (await loadBuildInfo())?.builtAt || null,
     uptimeSeconds: Math.round(process.uptime()),
     cacheEntries: cache.size,
@@ -639,64 +741,13 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
   const userPrompt = `${userPrefix}\n\n${rawText}\n\n${userSuffix}${translationSuffix}`;
 
   try {
-    const candidateModels = [
-      OMLX_MODEL,
-      ...OMLX_FALLBACK_MODELS.filter(model => model !== OMLX_MODEL),
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt },
     ];
-    let data = null;
-    let usedModel = null;
-    let lastError = null;
 
-    for (const model of candidateModels) {
-      try {
-        data = await withRetry(
-          () =>
-            fetchJsonOnce(`${OMLX_URL}/v1/chat/completions`, {
-              method: 'POST',
-              timeoutMs: 120000,
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${OMLX_API_KEY}`,
-              },
-              body: JSON.stringify({
-                model,
-                messages: [
-                  { role: 'system', content: systemPrompt },
-                  { role: 'user', content: userPrompt },
-                ],
-                temperature: 0.1,
-                max_tokens: 8192,
-              }),
-            }),
-          {
-            attempts: 2,
-            baseDelayMs: 1200,
-            label: `oMLX transform/${type} (${model})`,
-          },
-        );
-        usedModel = model;
-        break;
-      } catch (err) {
-        lastError = err;
-        if (
-          !isOmlxMemoryPressureError(err) ||
-          model === candidateModels[candidateModels.length - 1]
-        ) {
-          throw err;
-        }
-        console.warn(
-          `oMLX model ${model} rejected by memory guard; retrying with smaller fallback model: ${getErrorMessage(err)}`,
-        );
-      }
-    }
-
-    if (!data || !usedModel) {
-      throw lastError || new Error('oMLX transform failed without a usable model');
-    }
-
-    const choice = data?.choices?.[0] || {};
-    const msg = choice.message || {};
-    let output = String(msg.content || msg.reasoning_content || '').trim();
+    const result = await llmProvider.chat(messages, { timeoutMs: 120000 });
+    let output = String(result.content || '').trim();
 
     try {
       const parsed = JSON.parse(output);
@@ -709,18 +760,18 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
 
     output = stripReasoningArtifacts(output);
     if (!output) {
-      return res.status(502).json({ error: 'oMLX returned an empty response.' });
+      return res.status(502).json({ error: `${llmProvider.name} returned an empty response.` });
     }
 
     const responseKey = type === 'reconstruct' ? 'reconstructed' : 'summary';
     const cacheKey = `${type}:${mode}:${hashKey(rawText)}`;
-    setCache(cacheKey, { [responseKey]: output, snippetCount: snippets.length, model: usedModel });
+    setCache(cacheKey, { [responseKey]: output, snippetCount: snippets.length, model: result.model });
 
     res.json({
       [responseKey]: output,
       snippetCount: snippets.length,
-      model: usedModel,
-      fallbackUsed: usedModel !== OMLX_MODEL,
+      model: result.model,
+      provider: llmProvider.name,
     });
   } catch (err) {
     console.error(`Transform/${type} error:`, err);
