@@ -1,5 +1,30 @@
 # STATE_LOG — ytTranscript
 
+## 2026-06-20 · Finalna konfiguracja providerów (po testach manualnych)
+
+### Decyzja
+- **LLM_PROVIDER=groq** (primary)
+- **LLM_PROVIDER_FALLBACK=mistral** (fallback)
+- **GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct** (pinned, nie rotuje na compound)
+- Mistral small / Groq llama-4-scout / FreeLLMAPI — wszystkie trzy skonfigurowane w `.env`, aktywne 2.
+
+### Dlaczego llama-4-scout a nie groq/compound
+- `groq/compound` to Compound AI System Groq — wewnętrznie rotuje na modele (np. `openai/gpt-oss-120b`), co powodowało "Rate limit 8000 TPM" przy dłuższych promptach systemowych (`/api/transform summarize`).
+- `meta-llama/llama-4-scout-17b-16e-instruct` to pinned model z `context_window:131072`, prompt ~187 tokenów, mieści się komfortowo w limicie 8000 TPM konta.
+- Czas odpowiedzi: ~0.7-1s dla transform (vs 2-3s dla Mistral).
+- Output jakościowo porównywalny do Mistral (thematic sections z bold headers, poprawna struktura).
+
+### FreeLLMAPI status (po testach)
+- `GET /v1/models` → 200 natychmiast
+- `POST /v1/chat/completions` z `model:"auto"` → 8-30s (cold-start rotacja na darmowe modele openrouter)
+- Mimo działającego Scrutator (Hermes profil) **nie został wpięty do chain** — rotacja cold-start powodowałaby timeouty 8s dla ytTranscript UI.
+- FreeLLMAPI env vars nietknięte w `.env` — dostępne jako opcja na przyszłość.
+
+### Znalezione side-issue (pre-existing, poza scope)
+- `/api/transform` zwraca `"reconstructed"` z doklejonym prompt suffixem `"Use paragraphs. Keep every meaning intact."` na końcu. Parser nie obcina tej części. Do zbadania w następnym przebiegu.
+
+---
+
 ## 2026-06-20 · Mistral + Groq Providers + Health Cache + Fallback Chain
 
 ### Co

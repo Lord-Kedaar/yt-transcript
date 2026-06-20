@@ -5,8 +5,8 @@
 ### Providerzy LLM
 
 - **Mistral** — nowy provider, OpenAI-compatible, klucz `MISTRAL_API_KEY`, domyślny model `mistral-small-2603`.
-- **Groq** — nowy provider, OpenAI-compatible, klucz `GROQ_API_KEY`, domyślny model `openai/gpt-oss-20b`. Obsługuje reasoning models (`reasoning_content` fallback gdy `content` puste).
-- **Fallback chain** — `LLM_PROVIDER_FALLBACK=mistral,groq` automatycznie przełącza na następnego providera z listy gdy primary ma `health().ok=false`. Aktywny provider jest sticky dopóki sam nie zwróci unhealthy.
+- **Groq** — nowy provider, OpenAI-compatible, klucz `GROQ_API_KEY`, domyślny model `meta-llama/llama-4-scout-17b-16e-instruct` (pinned — `groq/compound` rotuje wewnętrznie i powodował TPM 8000 rate limit). Obsługuje reasoning models (`reasoning_content` fallback gdy `content` puste).
+- **Fallback chain** — `LLM_PROVIDER_FALLBACK=mistral` automatycznie przełącza na następnego providera z listy gdy primary ma `health().ok=false`. Aktywny provider jest sticky dopóki sam nie zwróci unhealthy.
 
 ### Stabilność
 
@@ -18,6 +18,7 @@
 ### Konfiguracja
 
 - `.env.example` zaktualizowany — sekcje Mistral, Groq, fallback chain, health cache TTL, komentarze z linkami do konsol API.
+- FreeLLMAPI env vars nietknięte (z poprzedniej migracji 3.2.1) — dostępne jako opcja, ale **nie w active chain** (cold-start rotacja 8-30s).
 
 ---
 
