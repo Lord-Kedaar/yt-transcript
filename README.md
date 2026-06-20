@@ -6,7 +6,8 @@ summary — all in one place, all on your own machine.
 
 - **Backend**: Node.js / Express, single-port :4000 (SPA + API)
 - **Frontend**: React 18 + Vite (built and served from the same port)
-- **LLM**: oMLX (Apple-Silicon-native, OpenAI-compatible)
+- **LLM**: provider-agnostic — supports oMLX (local Apple-Silicon), Mistral,
+  Groq, and FreeLLMAPI. Health-cached fallback chain via `LLM_PROVIDER_FALLBACK`.
 - **TTS (optional)**: Piper with pl / en / de voices
 - **Status**: stable prototype, review-ready, portfolio-ready
 
@@ -63,8 +64,9 @@ fallback is still in `server.js:23` and will be removed in Phase 1).
 - **Approach**: Fetch the transcript, send it to a local LLM, and
   produce (a) reconstructed paragraphs and (b) a bullet summary — all
   client-side rendered, no cloud storage.
-- **Tools**: Node.js 20, Express 4, React 18, Vite 5, oMLX (local
-  OpenAI-compatible server), Piper TTS (optional), `youtube-transcript-plus`.
+- **Tools**: Node.js 20, Express 4, React 18, Vite 5, oMLX / Mistral /
+  Groq / FreeLLMAPI (env-switched via `LLM_PROVIDER`, all OpenAI-compatible),
+  Piper TTS (optional), `youtube-transcript-plus`.
 - **Result**: Stable single-port prototype, resilience guardrails
   (retry / timeout / fallback / recovery page), mobile-responsive UI,
   PDF / Markdown / TXT / SRT export, optional 3-language TTS.
@@ -73,9 +75,11 @@ fallback is still in `server.js:23` and will be removed in Phase 1).
   never leave their machine. Same shape scales to internal corporate
   wikis, support tickets, or legal discovery.
 - **Limitations**: Single-user local prototype; TTS requires a binary
-  install; no model picker in UI; one LLM provider wired (oMLX); the
-  chunked reconstruct path from v3.2 is not yet re-introduced in the
-  oMLX M build.
+  install; no model picker in UI; four LLM providers wired with a
+  health-cached fallback chain (`LLM_PROVIDER_FALLBACK`) — the active
+  provider is sticky until it reports unhealthy, then the chain walks
+  to the next healthy one; the chunked reconstruct path from v3.2 is
+  not yet re-introduced in the oMLX M build.
 - **Privacy**: All transcripts and LLM traffic stay on the operator's
   machine. No analytics. No outbound telemetry. No data persistence
   beyond in-memory cache.
@@ -86,7 +90,8 @@ fallback is still in `server.js:23` and will be removed in Phase 1).
 
 | Method | Path                                | Purpose                                                    |
 | ------ | ----------------------------------- | ---------------------------------------------------------- |
-| GET    | `/api/health`                       | oMLX probe + uptime + cache stats                          |
+| GET    | `/api/health`                       | Active provider probe + chain + uptime + cache stats       |
+| GET    | `/api/lm-status`                    | Slim health probe (current active provider only)           |
 | GET    | `/api/build-version`                | release metadata                                           |
 | GET    | `/api/transcript?url=<youtube-url>` | Fetch transcript for a URL                                 |
 | POST   | `/api/transform`                    | `{snippets, type, mode}` → `{reconstructed\|summary, ...}` |
@@ -105,10 +110,30 @@ cd client && npm test
 
 All runtime config is env-driven; see [.env.example](.env.example).
 
-- `OMLX_URL`, `OMLX_MODEL`, `OMLX_API_KEY` (optional)
+- `LLM_PROVIDER` — `omlx` (default) | `mistral` | `groq` | `freellmapi`
+- `LLM_PROVIDER_FALLBACK` — comma-separated fallback chain
+  (e.g. `mistral,groq`). The active provider is sticky for
+  `HEALTH_CACHE_TTL_MS` (default 3000ms) before re-probing.
+- `OMLX_URL`, `OMLX_MODEL`, `OMLX_API_KEY` (optional, local server)
+- `MISTRAL_URL`, `MISTRAL_MODEL`, `MISTRAL_API_KEY`
+- `GROQ_URL`, `GROQ_MODEL`, `GROQ_API_KEY`
+- `FREELLMAPI_URL`, `FREELLMAPI_MODEL`, `FREELLMAPI_API_KEY`
+- `HEALTH_CACHE_TTL_MS` (default 3000)
 - `PORT` (default 4000)
 - `CACHE_TTL_MINUTES` (default 60)
 - `PIPER_BIN`, `PIPER_MODELS_DIR` (optional)
+
+## Provider switch
+
+```bash
+# Use Mistral as primary, Groq as fallback
+echo 'LLM_PROVIDER=mistral' >> .env
+echo 'LLM_PROVIDER_FALLBACK=groq' >> .env
+./manage.sh restart
+
+# Verify
+curl -s http://localhost:4000/api/health | jq .
+```
 
 ## License
 
