@@ -15,9 +15,21 @@ const app = express();
 const PORT = Number(process.env.PORT || 4000);
 
 // ─── LLM Provider Config (env-driven) ───────────────────────────
-// Supported providers: 'omlx' | 'freellmapi'
+// Supported providers: 'omlx' | 'freellmapi' | 'mistral' | 'groq'
 // Switch by setting LLM_PROVIDER env var. Defaults to 'omlx' for backwards compat.
 const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'omlx').toLowerCase();
+
+// Fallback chain — comma-separated provider names tried in order when the
+// primary provider's health check fails. Empty string = no fallback (single-provider mode).
+// Example: LLM_PROVIDER_FALLBACK=mistral,groq
+const LLM_PROVIDER_FALLBACK = (process.env.LLM_PROVIDER_FALLBACK || '')
+  .split(',')
+  .map(s => s.trim().toLowerCase())
+  .filter(Boolean);
+
+// Health cache TTL (ms) — caches llmProvider.health() results to prevent
+// flakiness from cold-starting large models on each /api/lm-status or /api/transform call.
+const HEALTH_CACHE_TTL_MS = Number(process.env.HEALTH_CACHE_TTL_MS || 3000);
 
 // oMLX settings (used when LLM_PROVIDER=omlx)
 const OMLX_URL = process.env.OMLX_URL || process.env.LM_STUDIO_URL || 'http://localhost:8585';
@@ -31,6 +43,18 @@ const FREELLMAPI_URL = process.env.FREELLMAPI_URL || 'http://127.0.0.1:3001';
 const FREELLMAPI_API_KEY = process.env.FREELLMAPI_API_KEY || '';
 // 'auto' = FreeLLMAPI auto-selects the best free provider per request.
 const FREELLMAPI_MODEL = process.env.FREELLMAPI_MODEL || 'auto';
+
+// Mistral settings (used when LLM_PROVIDER=mistral)
+// OpenAI-compatible chat completions endpoint.
+const MISTRAL_URL = process.env.MISTRAL_URL || 'https://api.mistral.ai/v1';
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || '';
+const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'mistral-small-2603';
+
+// Groq settings (used when LLM_PROVIDER=groq)
+// OpenAI-compatible chat completions endpoint with reasoning-capable models.
+const GROQ_URL = process.env.GROQ_URL || 'https://api.groq.com/openai/v1';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
 
 const BUILD_INFO_PATH = path.join(__dirname, 'client', 'dist', 'build-info.json');
 const INDEX_HTML_PATH = path.join(__dirname, 'client', 'dist', 'index.html');
@@ -246,14 +270,106 @@ async function fetchJsonWithRetry(url, options = {}, retryOptions = {}) {
 // of which backend is configured.
 
 /**
- * Build the active LLM provider from env (LLM_PROVIDER=omlx|freellmapi).
- * Cached after first call — env vars are read once at startup.
+ * Build a single named provider (factory dispatch).
+ * Returns null for unknown names so callers can handle the error explicitly.
+ */
+function buildProviderByName(name) {
+  switch (name) {
+    case 'omlx':
+      return buildOmlxProvider();
+    case 'freellmapi':
+      return buildFreeLLMAPIProvider();
+    case 'mistral':
+      return buildMistralProvider();
+    case 'groq':
+      return buildGroqProvider();
+    default:
+      return null;
+  }
+}
+
+/**
+ * Build the active LLM provider chain: primary + fallback list (if configured).
+ * Returns an object with:
+ *   - primary: the configured provider
+ *   - chain: [primary, ...fallback] in priority order
+ *   - active(): returns the first provider whose health() returns ok=true, or
+ *     the primary if all fail (so chat() can still surface a meaningful error).
+ * Health results are cached for HEALTH_CACHE_TTL_MS to prevent flakiness.
  */
 function buildLlmProvider() {
-  if (LLM_PROVIDER === 'freellmapi') {
-    return buildFreeLLMAPIProvider();
+  const primary = buildProviderByName(LLM_PROVIDER);
+  if (!primary) {
+    console.warn(`[llm] Unknown LLM_PROVIDER='${LLM_PROVIDER}', falling back to omlx.`);
+    return buildOmlxProvider();
   }
-  return buildOmlxProvider(); // default / omlx
+  if (LLM_PROVIDER_FALLBACK.length === 0) {
+    return primary;
+  }
+  // Build chain: primary + each fallback provider (skip duplicates and unknown names).
+  const seen = new Set([LLM_PROVIDER]);
+  const chain = [primary];
+  for (const name of LLM_PROVIDER_FALLBACK) {
+    if (seen.has(name)) continue;
+    const fb = buildProviderByName(name);
+    if (!fb) {
+      console.warn(`[llm] Skipping unknown fallback provider '${name}'.`);
+      continue;
+    }
+    seen.add(name);
+    chain.push(fb);
+  }
+  return buildProviderChain(chain);
+}
+
+/**
+ * Wraps a chain of providers with health-cached active() resolution.
+ * The returned object's chat() goes to whichever provider active() resolved to
+ * most recently (sticky until that provider reports unhealthy).
+ */
+function buildProviderChain(chain) {
+  let resolved = chain[0];
+  let resolvedAt = 0;
+
+  async function active() {
+    const now = Date.now();
+    // Sticky: if we resolved within the cache TTL, don't re-probe.
+    if (now - resolvedAt < HEALTH_CACHE_TTL_MS) return resolved;
+    // Cache expired — re-probe the current provider; if healthy stay sticky,
+    // otherwise walk the chain looking for a healthy fallback.
+    const h = await resolved.health();
+    if (h.ok) {
+      resolvedAt = now;
+      return resolved;
+    }
+    for (const provider of chain) {
+      if (provider === resolved) continue;
+      const h2 = await provider.health();
+      if (h2.ok) {
+        console.log(`[llm] Switched active provider: ${resolved.name} → ${provider.name}`);
+        resolved = provider;
+        resolvedAt = now;
+        return resolved;
+      }
+      console.warn(`[llm] Provider '${provider.name}' unhealthy: ${h2.error || 'unknown'}`);
+    }
+    // All unhealthy — return primary; caller will surface the error from chat().
+    return chain[0];
+  }
+
+  return {
+    name: chain[0].name,
+    chain: chain.map(p => p.name),
+    async health() {
+      const a = await active();
+      const h = await a.health();
+      return { ...h, chain: chain.map(p => p.name), activeProvider: a.name };
+    },
+    async chat(messages, opts) {
+      const a = await active();
+      return a.chat(messages, opts);
+    },
+  };
 }
 
 // ── oMLX provider ─────────────────────────────────────────────────
@@ -348,6 +464,105 @@ function buildFreeLLMAPIProvider() {
           }),
         });
         return { ok: true, state: 'connected', loaded: true };
+      } catch (err) {
+        return { ok: false, state: 'unreachable', error: getErrorMessage(err), retryable: isRetryableError(err) };
+      }
+    },
+  };
+}
+
+// ── Mistral provider (OpenAI-compatible) ────────────────────────
+
+function buildMistralProvider() {
+  return {
+    name: 'Mistral',
+    async chat(messages, { timeoutMs = 120000, retryOpts = {} } = {}) {
+      const data = await withRetry(
+        () =>
+          fetchJsonOnce(`${MISTRAL_URL}/chat/completions`, {
+            method: 'POST',
+            timeoutMs,
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              ...(MISTRAL_API_KEY ? { Authorization: `Bearer ${MISTRAL_API_KEY}` } : {}),
+            },
+            body: JSON.stringify({ model: MISTRAL_MODEL, messages, temperature: 0.1, max_tokens: 8192 }),
+          }),
+        { attempts: 2, baseDelayMs: 1200, label: 'Mistral chat', ...retryOpts },
+      );
+      return {
+        content: data?.choices?.[0]?.message?.content ?? '',
+        raw: data,
+        model: data?.model || MISTRAL_MODEL,
+      };
+    },
+    async health() {
+      try {
+        const data = await fetchJsonWithRetry(
+          `${MISTRAL_URL}/models`,
+          {
+            method: 'GET',
+            timeoutMs: 6000,
+            headers: {
+              Accept: 'application/json',
+              ...(MISTRAL_API_KEY ? { Authorization: `Bearer ${MISTRAL_API_KEY}` } : {}),
+            },
+          },
+          { attempts: 1, baseDelayMs: 0, label: 'Mistral probe' },
+        );
+        const models = Array.isArray(data?.data) ? data.data.map(m => m?.id).filter(Boolean) : [];
+        return { ok: true, state: 'connected', loaded: models.includes(MISTRAL_MODEL), models, modelCount: models.length };
+      } catch (err) {
+        return { ok: false, state: 'unreachable', error: getErrorMessage(err), retryable: isRetryableError(err) };
+      }
+    },
+  };
+}
+
+// ── Groq provider (OpenAI-compatible, reasoning-capable) ────────
+
+function buildGroqProvider() {
+  return {
+    name: 'Groq',
+    async chat(messages, { timeoutMs = 120000, retryOpts = {} } = {}) {
+      const data = await withRetry(
+        () =>
+          fetchJsonOnce(`${GROQ_URL}/chat/completions`, {
+            method: 'POST',
+            timeoutMs,
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              ...(GROQ_API_KEY ? { Authorization: `Bearer ${GROQ_API_KEY}` } : {}),
+            },
+            body: JSON.stringify({ model: GROQ_MODEL, messages, temperature: 0.1, max_tokens: 8192 }),
+          }),
+        { attempts: 2, baseDelayMs: 1200, label: 'Groq chat', ...retryOpts },
+      );
+      const msg = data?.choices?.[0]?.message ?? {};
+      // Groq reasoning models (e.g. openai/gpt-oss-20b) put the visible answer in
+      // `content` and chain-of-thought in `reasoning_content`. When `content` is
+      // empty fall back to reasoning_content so the caller still sees something.
+      const content = msg.content || msg.reasoning_content || '';
+      return { content, raw: data, model: data?.model || GROQ_MODEL };
+    },
+    async health() {
+      try {
+        const data = await fetchJsonWithRetry(
+          `${GROQ_URL}/models`,
+          {
+            method: 'GET',
+            timeoutMs: 6000,
+            headers: {
+              Accept: 'application/json',
+              ...(GROQ_API_KEY ? { Authorization: `Bearer ${GROQ_API_KEY}` } : {}),
+            },
+          },
+          { attempts: 1, baseDelayMs: 0, label: 'Groq probe' },
+        );
+        const models = Array.isArray(data?.data) ? data.data.map(m => m?.id).filter(Boolean) : [];
+        return { ok: true, state: 'connected', loaded: models.includes(GROQ_MODEL), models, modelCount: models.length };
       } catch (err) {
         return { ok: false, state: 'unreachable', error: getErrorMessage(err), retryable: isRetryableError(err) };
       }
@@ -613,12 +828,27 @@ app.get('/api/build-version', async (req, res) => {
 app.get('/api/health', async (req, res) => {
   noCache(res);
   const lmStatus = await checkOmlx();
+  // Resolve the configured model for the active primary provider so /api/health
+  // stays accurate as providers are added.
+  const activeModel = (() => {
+    switch (LLM_PROVIDER) {
+      case 'freellmapi':
+        return FREELLMAPI_MODEL;
+      case 'mistral':
+        return MISTRAL_MODEL;
+      case 'groq':
+        return GROQ_MODEL;
+      case 'omlx':
+      default:
+        return OMLX_MODEL;
+    }
+  })();
   res.json({
     status: lmStatus.ok ? 'ok' : 'degraded',
     provider: llmProvider.name,
     providerState: lmStatus.state,
     providerDetails: lmStatus,
-    model: LLM_PROVIDER === 'freellmapi' ? FREELLMAPI_MODEL : OMLX_MODEL,
+    model: activeModel,
     buildVersion: (await loadBuildInfo())?.builtAt || null,
     uptimeSeconds: Math.round(process.uptime()),
     cacheEntries: cache.size,
@@ -627,7 +857,20 @@ app.get('/api/health', async (req, res) => {
 
 app.get('/api/lm-status', async (req, res) => {
   noCache(res);
-  res.json(await checkOmlx());
+  // Express-side guard: a hanging upstream probe must not stall the client.
+  // The probe inside llmProvider.health() is already cached for HEALTH_CACHE_TTL_MS,
+  // so this layer is a defense-in-depth for cold-start edge cases.
+  const guard = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(503).json({ ok: false, state: 'unreachable-fast', error: 'health probe timeout (express-side)' });
+    }
+  }, 2000);
+  try {
+    const status = await checkOmlx();
+    if (!res.headersSent) res.json(status);
+  } finally {
+    clearTimeout(guard);
+  }
 });
 
 app.get('/api/transcript', async (req, res) => {
@@ -712,9 +955,14 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Invalid type. Use reconstruct or summarize.' });
   }
 
+  // checkOmlx() → llmProvider.health(): provider-agnostic (was hardcoded to oMLX
+  // pre-migration). Hardcoded error string replaced with provider.name template
+  // so the message correctly identifies the active provider.
   const lmStatus = await checkOmlx();
   if (!lmStatus.ok) {
-    return res.status(503).json({ error: 'oMLX is unreachable.' });
+    return res.status(503).json({
+      error: `${llmProvider.name} is unreachable: ${lmStatus.error || 'unknown error'}`,
+    });
   }
 
   const promptDef = TRANSFORM_PROMPTS[type];

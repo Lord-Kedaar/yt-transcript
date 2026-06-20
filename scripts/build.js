@@ -9,9 +9,13 @@ const out = path.join(dist, 'build-info.json');
 
 fs.mkdirSync(dist, { recursive: true });
 
+// Read version from package.json so build-info.json always matches the declared
+// release version (was hardcoded '3.2.0' which drifted from package.json '3.2.1').
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+
 const info = {
   name: 'yt-transcript',
-  version: '3.2.0',
+  version: pkg.version,
   builtAt: new Date().toISOString(),
   note: 'Build metadata is refreshed on launch; the SPA remains static.',
 };

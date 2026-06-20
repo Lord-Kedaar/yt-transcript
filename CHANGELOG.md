@@ -1,5 +1,26 @@
 # Changelog
 
+## 3.3.0 — 2026-06-20
+
+### Providerzy LLM
+
+- **Mistral** — nowy provider, OpenAI-compatible, klucz `MISTRAL_API_KEY`, domyślny model `mistral-small-2603`.
+- **Groq** — nowy provider, OpenAI-compatible, klucz `GROQ_API_KEY`, domyślny model `openai/gpt-oss-20b`. Obsługuje reasoning models (`reasoning_content` fallback gdy `content` puste).
+- **Fallback chain** — `LLM_PROVIDER_FALLBACK=mistral,groq` automatycznie przełącza na następnego providera z listy gdy primary ma `health().ok=false`. Aktywny provider jest sticky dopóki sam nie zwróci unhealthy.
+
+### Stabilność
+
+- **Health cache** — `HEALTH_CACHE_TTL_MS=3000` eliminuje flakiness `/api/lm-status` z cold-start dużych modeli (przed: 30% timeoutów przy probe z `model:"auto"`; po: 10/10 ≤ 0.3s).
+- **Express-side guard** w `/api/lm-status` — 2s timeout jako defense-in-depth dla cold-start edge cases.
+- **`/api/transform` provider-agnostic** — hardcoded `"oMLX is unreachable."` zastąpiony szablonem `${llmProvider.name} is unreachable: ${error}` (poprawka po migracji 2026-06-17, w której zostawiono residualny ref).
+- **`build.js` wersja** — czyta `version` z `package.json` zamiast hardcoded `'3.2.0'` (eliminuje drift build-info vs package.json).
+
+### Konfiguracja
+
+- `.env.example` zaktualizowany — sekcje Mistral, Groq, fallback chain, health cache TTL, komentarze z linkami do konsol API.
+
+---
+
 ## 3.2.1 — 2026-06-18
 
 ### Security
