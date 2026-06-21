@@ -5,7 +5,7 @@ fragmented subtitle text via a local LLM, and producing a bullet-point
 summary — all in one place, all on your own machine.
 
 - **Backend**: Node.js / Express, single-port :4000 (SPA + API)
-- **Frontend**: React 18 + Vite (built and served from the same port)
+- **Frontend**: single-file self-contained HTML (Rhea design system), served from repo root. No client build pipeline.
 - **LLM**: provider-agnostic — supports oMLX (local Apple-Silicon), Mistral,
   Groq, and FreeLLMAPI. Health-cached fallback chain via `LLM_PROVIDER_FALLBACK`.
 - **TTS (optional)**: Piper with pl / en / de voices
@@ -36,7 +36,7 @@ A repo audit identified 9 issues, ordered into 4 phases. Current state:
 | ----- | ------------------------------------------------------------ | ---------- |
 | 0     | Documentation sync (this PR)                                 | ✅ done    |
 | 1     | Remove hardcoded fallback, cache LRU + hash key              | ⏳ planned |
-| 2     | CORS/host/allowedHosts tightening, rate limits, Vite upgrade | ✅ done    |
+| 2     | CORS/host/allowedHosts tightening, rate limits              | ✅ done    |
 | 3     | ESLint/Prettier, CI, PDF XSS fix, repo cleanup               | ⏳ planned |
 
 See `docs/SECURITY_NOTES.md` for the corrected findings (the previous
@@ -64,12 +64,13 @@ fallback is still in `server.js:23` and will be removed in Phase 1).
 - **Approach**: Fetch the transcript, send it to a local LLM, and
   produce (a) reconstructed paragraphs and (b) a bullet summary — all
   client-side rendered, no cloud storage.
-- **Tools**: Node.js 20, Express 4, React 18, Vite 5, oMLX / Mistral /
+- **Tools**: Node.js 20, Express 4, oMLX / Mistral /
   Groq / FreeLLMAPI (env-switched via `LLM_PROVIDER`, all OpenAI-compatible),
   Piper TTS (optional), `youtube-transcript-plus`.
 - **Result**: Stable single-port prototype, resilience guardrails
-  (retry / timeout / fallback / recovery page), mobile-responsive UI,
-  PDF / Markdown / TXT / SRT export, optional 3-language TTS.
+  (retry / timeout / fallback / recovery page), single-file Rhea-themed dark UI,
+  PDF / Markdown / TXT / SRT export, optional 3-language TTS, dynamic translate
+  language (English / German / Polish) via `/api/transform` targetLang.
 - **Value for the organisation**: Demonstrates a privacy-respecting
   pattern for AI-assisted content triage — the operator's transcripts
   never leave their machine. Same shape scales to internal corporate
@@ -103,7 +104,7 @@ fallback is still in `server.js:23` and will be removed in Phase 1).
 
 ```bash
 cd client && npm test
-# 2 suites, 16 assertions, all pass.
+# 2 suites, 16 assertions, all pass (legacy React client tests; v3.4.0+ serves single-file HTML).
 ```
 
 ## Configuration

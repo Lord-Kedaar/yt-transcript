@@ -1,5 +1,91 @@
 # STATE_LOG — ytTranscript
 
+## 2026-06-21 · Rhea UI redesign + multi-lang translate (3.4.0)
+
+### Decyzje
+- **UI**: jednoplikowy `index.html` (60 KB) w repo root, shadcn/Rhea tokens (zinc + violet #8b5cf6 + lime #84cc16), EN microcopy, provider label "AI" (nie oMLX, nie lokalnie leakuj nazwy providera do usera).
+- **Language dialog**: 3 opcje zamiast 2 — Keep / Translate to German / Translate to Polish. Frontend wysyła `targetLang` w body `/api/transform`.
+- **Diagnostics Sheet usunięty** — poza scope portfolio (backstage tool, nie user-facing).
+- **Motion**: jeden easing family (`cubic-bezier(0.2, 0, 0, 1)`), 3 timing tiers (0.12s/0.18s/0.6s), reduced-motion fallback.
+- **A11y**: focus-visible wszędzie, aria-busy na ładowaniu, skip-link, role="status" na spinnerach.
+
+### Conflict z MERGE_BRIEF.md (rozwiązany)
+- Brief kazał wgrać redesign do `./index.html` (root). Tymczasem server.js czytał `client/dist/index.html` (React SPA z 2026-06-14).
+- Decyzja: zmieniono `INDEX_HTML_PATH` na root `./index.html` (zgodne z intencją briefu „no build pipeline needed for UI"). React SPA pozostawiona w `client/dist/` jako archaeology, `/assets/*` static handler nieaktywny (orphan, do usunięcia w follow-up).
+- Backup starej wersji: `client/dist/index.html.backup-20260621-before-rhea-redesign` (614 B, ostatni built React SPA).
+
+### Backend contract — `/api/transform`
+- **Nowe pole**: `targetLang: 'de' | 'pl' | 'en'` (opcjonalne, default 'pl').
+- **Backward compat**: bez `targetLang` = Polish (stare zachowanie).
+- **Cache key**: `type:mode:targetLang:hashKey` (zapobiega PL↔DE cross-contamination).
+
+### Pliki zmienione
+- `index.html` — kompletny redesign (60 543 B, single-file, self-contained)
+- `server.js` — `INDEX_HTML_PATH` → root; `/api/transform` linia 978-1000 (targetLang handling); linia 1030 (cache key z targetLang)
+- `CHANGELOG.md` — 3.4.0 entry
+- `STATE_LOG.md` — ten wpis
+- Backupy: `server.js.backup-20260621-before-dynamic-targetlang`, `client/dist/index.html.backup-20260621-before-rhea-redesign`
+
+### Weryfikacja (2026-06-21 03:29)
+```bash
+# 1. Health
+curl -s http://localhost:4000/api/health | jq .
+# → status:ok, provider:"Groq", providerState:"connected"
+
+# 2. Translate to Polish (backward compat)
+curl -s -X POST http://localhost:4000/api/transform \
+  -H "Content-Type: application/json" \
+  -d '{"snippets":[{"text":"Hello world test."}],"type":"summarize","mode":"translate"}' | jq .
+# → summary w Polish (Groq llama-4-scout)
+
+# 3. Translate to German (nowy)
+curl -s -X POST http://localhost:4000/api/transform \
+  -H "Content-Type: application/json" \
+  -d '{"snippets":[{"text":"Hello world test."}],"type":"summarize","mode":"translate","targetLang":"de"}' | jq .
+# → summary w German
+
+# 4. Reconstruct to German (nowy)
+curl -s -X POST http://localhost:4000/api/transform \
+  -H "Content-Type: application/json" \
+  -d '{"snippets":[{"text":"The quick brown fox."}],"type":"reconstruct","mode":"translate","targetLang":"de"}' | jq .
+# → reconstructed w German
+
+# 5. targetLang=en noop (keep original via translate)
+curl -s -X POST http://localhost:4000/api/transform \
+  -H "Content-Type: application/json" \
+  -d '{"snippets":[{"text":"Hello world test."}],"type":"summarize","mode":"translate","targetLang":"en"}' | jq .
+# → summary w English (no translate suffix)
+
+# 6. UI smoke: HTTP 200 + 60 543 B + SHA matches source
+curl -s http://localhost:4000/ | shasum -a 256
+```
+
+### Akceptacja ✓
+- [x] UI: serwuje z root `./index.html` (HTTP 200, 60 543 B, SHA zgodny ze źródłem)
+- [x] `/api/transform` z `mode:'translate'` bez `targetLang` → Polish output (Groq, llama-4-scout)
+- [x] `/api/transform` z `mode:'translate', targetLang:'de'` → German output
+- [x] `/api/transform` z `mode:'translate', targetLang:'pl'` → Polish output
+- [x] `/api/transform` z `mode:'translate', targetLang:'en'` → English noop
+- [x] Cache key rozróżnia targetLang (PL → DE → PL zwraca różne wyniki, nie cross-contamination)
+- [x] Brak regresji w `/api/transcript` (Rick Astley, 61 snippets) i `/api/tts` (503 Piper missing — pre-existing, nie regresja)
+- [ ] UI smoke manualny: Fetch → Reconstruct → Language dialog → 3 buttony (wymaga przeglądarki — poza scope workera)
+- [ ] Toast po Copy/Export (wymaga UI smoke manual)
+- [ ] prefers-reduced-motion (wymaga OS settings — manual)
+
+### Rollback
+```bash
+cp server.js.backup-20260621-before-dynamic-targetlang server.js
+cp index.html client/dist/index.html  # jeśli chcesz przywrócić React SPA
+./manage.sh restart
+```
+
+### Znalezione side-issues (poza scope v3.4.0)
+- `client/dist/` zawiera starą React SPA + `/assets/*` static handler w server.js:122-128 jest orphanem. Do usunięcia w v3.4.1 lub v3.5.0.
+- DESIGN.md ma unstaged changes (prawdopodobnie redesign-era edits) — out of scope, nietknięte.
+- Vite build step w `scripts/build.js` (`npm --prefix client run build`) nadal działa przy `npm start` ale jego output jest ignorowany. Wastes ~5-10s na restart. Do wyłączenia w v3.4.1.
+
+---
+
 ## 2026-06-20 · Finalna konfiguracja providerów (po testach manualnych)
 
 ### Decyzja

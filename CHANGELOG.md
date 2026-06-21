@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.4.0 — 2026-06-21
+
+### UI redesign — Rhea design system
+
+- **Single-file HTML** — replaced previous multi-file React structure with `index.html` (60 KB, self-contained, no client build needed). Server.js `INDEX_HTML_PATH` updated to serve from repo root instead of `client/dist/index.html`. React SPA in `client/dist/` retained but no longer served (kept for tests/archaeology).
+- **shadcn/Rhea tokens** — zinc base, `--primary #8b5cf6` (violet-500, deeper than washed-out `#a78bfa`), `--accent #84cc16` (lime for AI activity indicators), Inter font, 1.5 line-height, hairline borders.
+- **EN-only microcopy** — all UI strings in English (was mixed PL/EN).
+- **Provider label** — generyczne "AI" with status ring (was hardcoded "oMLX" leaking provider name to end-user).
+- **Language dialog** — 3 options: Keep original / Translate to German / Translate to Polish (was 2: keep / translate to Polish).
+- **Diagnostics removed** — Diagnostics Sheet + diagnostics button + "Lokalne przetwarzanie" notice all removed from UI (out of portfolio scope).
+- **Toast feedback** — bottom-right corner toast for copy/export actions (was inline `<span>Skopiowano!</span>` on button).
+- **Motion system** — `cubic-bezier(0.2, 0, 0, 1)` everywhere, single timing tier (0.12s/0.18s/0.6s), `prefers-reduced-motion` fallback (animations off, transitions instant for motion).
+- **A11y** — `:focus-visible` ring on all interactive, `aria-busy` on loading buttons, `role="status"` on spinners, `aria-live="polite"` on toast host, skip-link `#first-snapshot`.
+- **`.btn-ai`** — dedicated class for AI actions with lime dot ring + lime border on hover (TTS, Reconstruct, Summarize).
+
+### Backend — dynamic translate language
+
+- **`/api/transform`** accepts `targetLang: 'de' | 'pl' | 'en'` (default `'pl'` for backward compat with old frontend).
+- Prompt suffix dynamically built: "Translate into Polish" / "Translate into German" / noop (en).
+- Cache key includes `targetLang` to prevent PL/DE cross-contamination.
+- Validation commands in `STATE_LOG.md` 2026-06-21 entry.
+
+---
+
 ## 3.3.0 — 2026-06-20
 
 ### Providerzy LLM
