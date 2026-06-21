@@ -155,6 +155,99 @@ function detectLanguage(text) {
   return 'en';
 }
 
+// ── AI Daily Demo Limit ───────────────────────────────────────────
+// Simple JSON-file store for demo rate-limiting.
+// Stores IP hash + daily count; survives restarts; no Redis needed.
+const AI_DAILY_LIMIT_ENABLED = process.env.YTTRANSCRIPT_AI_DAILY_LIMIT_ENABLED === 'true';
+const AI_DAILY_LIMIT = Number(process.env.YTTRANSCRIPT_AI_DAILY_LIMIT) || 6;
+const AI_LIMIT_STORE_PATH = path.join(__dirname, '.ai-daily-limit.json');
+const AI_CONTACT_EMAIL = process.env.YTTRANSCRIPT_CONTACT_EMAIL || 'kontakt@radoslaw-pleskot.com';
+const PROJECT_DESCRIPTION_URL = process.env.YTTRANSCRIPT_PROJECT_DESCRIPTION_URL || 'https://radoslaw-pleskot.com/portfolio/yttranscript';
+const PRIVACY_POLICY_URL = process.env.YTTRANSCRIPT_PRIVACY_POLICY_URL || 'https://radoslaw-pleskot.com/privacy';
+
+// Read-only JSON store for IP→{date,count}
+function readLimitStore() {
+  try {
+    if (fs.existsSync(AI_LIMIT_STORE_PATH)) {
+      return JSON.parse(fs.readFileSync(AI_LIMIT_STORE_PATH, 'utf8'));
+    }
+  } catch { /* corrupt or missing → start fresh */ }
+  return {};
+}
+function writeLimitStore(data) {
+  try {
+    fs.writeFileSync(AI_LIMIT_STORE_PATH, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[AI limit] Store write failed:', err.message);
+  }
+}
+
+// Get today's date string in UTC: "YYYY-MM-DD"
+function todayUtc() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Resolve client IP, honouring X-Forwarded-For behind a trusted proxy.
+// Only trusts X-Forwarded-For when CORS_ORIGIN is a specific domain (not "*").
+function clientIp(req) {
+  const trustProxy = CORS_ORIGIN !== '*';
+  let ip = req.ip || req.socket?.remoteAddress || '';
+  if (trustProxy && req.headers['x-forwarded-for']) {
+    // Take the first (original client) IP
+    ip = req.headers['x-forwarded-for'].split(',')[0].trim();
+  }
+  // Normalize IPv4-mapped IPv6 addresses (::ffff:x.x.x.x) to plain IPv4
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+  // Hash to avoid storing raw IPs; keep only last 16 hex chars
+  return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 16);
+}
+
+// Check and increment daily AI action count.
+// Returns { allowed: boolean, usedToday: number, remainingToday: number }
+function checkAiLimit(ip) {
+  if (!AI_DAILY_LIMIT_ENABLED) {
+    return { allowed: true, usedToday: null, remainingToday: null, limitEnabled: false };
+  }
+  const store = readLimitStore();
+  const today = todayUtc();
+  const entry = store[ip] || { date: today, count: 0 };
+  if (entry.date !== today) {
+    entry.date = today;
+    entry.count = 0;
+  }
+  if (entry.count >= AI_DAILY_LIMIT) {
+    return { allowed: false, usedToday: entry.count, remainingToday: 0, limitEnabled: true, limit: AI_DAILY_LIMIT };
+  }
+  entry.count += 1;
+  store[ip] = entry;
+
+  // Periodic stale-entry cleanup: remove entries older than yesterday (runs on ~1% of requests)
+  const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+  let cleaned = 0;
+  for (const k of Object.keys(store)) {
+    if (store[k].date < yesterday) { delete store[k]; cleaned++; }
+  }
+  if (cleaned > 0) writeLimitStore(store); // single write after mutation
+
+  return { allowed: true, usedToday: entry.count, remainingToday: AI_DAILY_LIMIT - entry.count, limitEnabled: true, limit: AI_DAILY_LIMIT };
+}
+
+// Express middleware: block /api/transform when AI daily limit is exhausted
+function aiDailyLimitGuard(req, _res, next) {
+  if (!AI_DAILY_LIMIT_ENABLED) return next();
+  const ip = clientIp(req);
+  const result = checkAiLimit(ip);
+  if (!result.allowed) {
+    return _res.status(429).json({
+      error: 'Daily demo limit reached.',
+      message: `You have used all ${AI_DAILY_LIMIT} AI actions available today. Contact Radosław to unlock the demo.`,
+      contactEmail: AI_CONTACT_EMAIL,
+      subject: 'Prośba o odblokowanie limitu demo ytTranscript',
+    });
+  }
+  next();
+}
+
 // ── Security: CORS (default: local dev, lock to env in production) ──────────
 const CORS_ORIGIN =
   process.env.CORS_ORIGIN ||
@@ -960,6 +1053,26 @@ app.get('/api/build-version', async (req, res) => {
   });
 });
 
+app.get('/api/ai-limit-status', (req, res) => {
+  noCache(res);
+  const ip = clientIp(req);
+  if (!AI_DAILY_LIMIT_ENABLED) {
+    return res.json({ limitEnabled: false, dailyLimit: null, usedToday: null, remainingToday: null });
+  }
+  const store = readLimitStore();
+  const today = todayUtc();
+  const entry = store[ip];
+  if (!entry || entry.date !== today) {
+    return res.json({ limitEnabled: true, dailyLimit: AI_DAILY_LIMIT, usedToday: 0, remainingToday: AI_DAILY_LIMIT });
+  }
+  res.json({
+    limitEnabled: true,
+    dailyLimit: AI_DAILY_LIMIT,
+    usedToday: entry.count,
+    remainingToday: Math.max(0, AI_DAILY_LIMIT - entry.count),
+  });
+});
+
 app.get('/api/health', async (req, res) => {
   noCache(res);
   const t0 = Date.now();
@@ -1004,6 +1117,9 @@ app.get('/api/health', async (req, res) => {
     buildVersion: (await loadBuildInfo())?.builtAt || null,
     uptimeSeconds: Math.round(process.uptime()),
     cacheEntries: cache.size,
+    projectDescriptionUrl: PROJECT_DESCRIPTION_URL,
+    privacyPolicyUrl: PRIVACY_POLICY_URL,
+    contactEmail: AI_CONTACT_EMAIL,
   });
 });
 
@@ -1101,7 +1217,7 @@ function rawTextGuard(req, _res, next) {
   next();
 }
 
-app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
+app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, async (req, res) => {
   noCache(res);
   const { snippets, type, mode = 'original' } = req.body || {};
   if (!Array.isArray(snippets) || snippets.length === 0) {

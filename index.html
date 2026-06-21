@@ -795,6 +795,84 @@
       font-size: 0.7rem;
     }
 
+    /* ===== DEMO POPUP ===== */
+    #demoPopup {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 300;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    #demoPopup.open { display: flex; }
+    .demo-popup {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+      padding: 1.5rem;
+    }
+    .demo-popup h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 0 0 0.75rem;
+      color: var(--fg);
+    }
+    .demo-popup p {
+      font-size: 0.8rem;
+      line-height: 1.55;
+      color: var(--muted-2);
+      margin: 0 0 0.75rem;
+    }
+    .demo-popup .demo-limit-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--fg);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .demo-popup .demo-limit-info svg { flex-shrink: 0; color: var(--primary); }
+    .demo-popup .demo-limit-info.limit-reached { border-color: #f59e0b; color: #d97706; }
+    .demo-popup .demo-limit-info.limit-reached svg { color: #f59e0b; }
+    .demo-popup .demo-limit-info.limit-off { color: var(--muted-2); border-color: transparent; background: transparent; }
+    .demo-popup .demo-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .demo-popup .demo-actions .btn { width: 100%; justify-content: center; }
+    .demo-popup .demo-links {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 0.75rem;
+    }
+    .demo-popup .demo-links a {
+      font-size: 0.72rem;
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .demo-popup .demo-links a:hover { text-decoration: underline; }
+    .demo-popup .demo-privacy-note {
+      font-size: 0.68rem;
+      color: var(--muted-2);
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+
     /* ===== COLLAPSIBLE (legacy — kept for other collapsibles) ===== */
     .collapsible {
       border: 1px solid var(--border);
@@ -1251,14 +1329,14 @@
         <span id="providerLabel">AI</span>
       </button>
 
-      <a class="topbar-btn" href="#" aria-label="Documentation">
+      <a class="topbar-btn" id="topbarProjectLink" href="#" target="_blank" rel="noopener" aria-label="Project description">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
           <line x1="16" y1="13" x2="8" y2="13"/>
           <line x1="16" y1="17" x2="8" y2="17"/>
         </svg>
-        <span>Documentation</span>
+        <span>Project description</span>
       </a>
     </nav>
   </header>
@@ -1483,11 +1561,32 @@
   <footer class="footer" role="contentinfo">
     <span>© 2026 Radosław Pleskot · ytTranscript</span>
     <div class="footer-links">
-      <a href="#">Documentation</a>
-      <a href="#">Security notes</a>
-      <a href="#">Known limitations</a>
+      <a id="footerProjectLink" href="#" target="_blank" rel="noopener">Project description</a>
+      <a id="footerPrivacyLink" href="#" target="_blank" rel="noopener">Privacy policy</a>
     </div>
   </footer>
+
+  <!-- DEMO POPUP -->
+  <div id="demoPopup" role="dialog" aria-modal="true" aria-labelledby="demoPopupTitle" aria-describedby="demoPopupDesc">
+    <div class="demo-popup">
+      <h2 id="demoPopupTitle">ytTranscript — Demo</h2>
+      <p id="demoPopupDesc">This is a public demo of ytTranscript. The app uses AI to generate transcripts, reconstructions and summaries of YouTube videos.</p>
+      <div class="demo-limit-info" id="demoLimitInfo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
+        </svg>
+        <span id="demoLimitText">Loading…</span>
+      </div>
+      <div class="demo-actions">
+        <button class="btn btn-primary" id="demoOkBtn" type="button">Rozumiem</button>
+        <div class="demo-links">
+          <a id="demoPrivacyLink" href="#" target="_blank" rel="noopener">Privacy policy</a>
+          <a id="demoContactLink" href="#" rel="noopener">Contact about unlock</a>
+        </div>
+      </div>
+      <p class="demo-privacy-note">Your IP address (hashed) is stored locally to enforce the demo limit. No personal data is collected.</p>
+    </div>
+  </div>
 
   <!-- LANGUAGE DIALOG -->
   <div class="dialog-overlay" id="langDialog" role="dialog" aria-modal="true" aria-labelledby="langDialogTitle" aria-describedby="langDialogDesc">
@@ -1592,6 +1691,75 @@
     const providerRing  = $('providerRing');
     const providerLabel = $('providerLabel');
     const providerBadge = $('providerBadge');
+    const demoPopup     = $('demoPopup');
+    const demoOkBtn    = $('demoOkBtn');
+    const demoLimitInfo = $('demoLimitInfo');
+    const demoLimitText = $('demoLimitText');
+    const demoPrivacyLink = $('demoPrivacyLink');
+    const demoContactLink = $('demoContactLink');
+    const footerProjectLink = $('footerProjectLink');
+    const footerPrivacyLink = $('footerPrivacyLink');
+    const topbarProjectLink = $('topbarProjectLink');
+
+    /* DEMO POPUP */
+    const DEMO_POPUP_KEY = 'ytt_demo_popup_dismissed';
+    async function initDemoPopup() {
+      // Fetch limit status and health (for URLs) in parallel
+      let limitData = { limitEnabled: false, dailyLimit: null, usedToday: null, remainingToday: null };
+      let healthData = {};
+      try {
+        const [limitRes, healthRes] = await Promise.all([
+          fetch('/api/ai-limit-status'),
+          fetch('/api/health'),
+        ]);
+        if (limitRes.ok) limitData = await limitRes.json();
+        if (healthRes.ok) healthData = await healthRes.json();
+      } catch (_) { /* network error — show popup with defaults */ }
+
+      const { projectDescriptionUrl, privacyPolicyUrl, contactEmail } = healthData;
+      const projectUrl = projectDescriptionUrl || 'https://radoslaw-pleskot.com/portfolio/yttranscript';
+      const privacyUrl = privacyPolicyUrl || 'https://radoslaw-pleskot.com/privacy';
+      const email = contactEmail || 'kontakt@radoslaw-pleskot.com';
+
+      // Set all links
+      [footerProjectLink, topbarProjectLink].forEach(el => { if (el) el.href = projectUrl; });
+      [footerPrivacyLink, demoPrivacyLink].forEach(el => { if (el) el.href = privacyUrl; });
+      if (demoContactLink) {
+        demoContactLink.href = `mailto:${email}?subject=${encodeURIComponent('Prośba o odblokowanie limitu demo ytTranscript')}`;
+      }
+
+      // Update limit info in popup
+      if (limitData.limitEnabled) {
+        const { usedToday = 0, dailyLimit = 6, remainingToday = 0 } = limitData;
+        const used = usedToday;
+        const total = dailyLimit;
+        if (remainingToday === 0) {
+          demoLimitInfo.className = 'demo-limit-info limit-reached';
+          demoLimitText.textContent = `Limit reached · ${used}/${total} AI actions used today`;
+        } else {
+          demoLimitInfo.className = 'demo-limit-info';
+          demoLimitText.textContent = `Pozostało dziś: ${remainingToday} z ${total} akcji AI`;
+        }
+      } else {
+        demoLimitInfo.className = 'demo-limit-info limit-off';
+        demoLimitText.textContent = 'Demo limit is currently disabled';
+      }
+
+      // Show popup if not dismissed
+      if (!sessionStorage.getItem(DEMO_POPUP_KEY)) {
+        demoPopup.classList.add('open');
+      }
+    }
+
+    if (demoOkBtn) {
+      demoOkBtn.addEventListener('click', () => {
+        demoPopup.classList.remove('open');
+        sessionStorage.setItem(DEMO_POPUP_KEY, '1');
+      });
+    }
+
+    // Kick off popup init (async, non-blocking)
+    initDemoPopup();
 
     /* HELPERS */
     function setError(msg) {
@@ -1994,7 +2162,13 @@
           })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Model returned an error.');
+        if (!res.ok) {
+          // Surface 429 daily-limit error with contact info
+          if (res.status === 429) {
+            throw new Error(data.message || data.error || 'Daily demo limit reached.');
+          }
+          throw new Error(data.error || 'Model returned an error.');
+        }
         // Capture metadata for badge (brief §17). elapsedMs from server is
         // authoritative (server measures around the chat call); client startAt
         // is a fallback if the server omitted it.
