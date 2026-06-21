@@ -1947,15 +1947,16 @@
         };
         if (type === 'reconstruct') {
           S.reconstructedText = data.reconstructed;
-          S.summaryText = '';
           S.lastReconstructionMeta = meta;
-          // Switch view to reconstruction.
+          // Keep any existing summary available in the AI Summary tab.
+          // The top-level view switcher is the source of truth for choosing
+          // between Transcript / AI Reconstruction / AI Summary.
           setActiveView('reconstruction');
         } else {
           S.summaryText = data.summary;
-          S.reconstructedText = '';
           S.lastAiMeta = meta;
-          // Switch view to summary.
+          // Keep any existing reconstruction available in the AI Reconstruction tab.
+          // New transcript fetch/reset is the only flow that clears both outputs.
           setActiveView('summary');
         }
         renderTranscript();

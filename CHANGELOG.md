@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.4.5 — 2026-06-21
+
+### Fixed
+
+- **AI Summary and AI Reconstruction now coexist** — generating Summary no longer deletes a previously generated Reconstruction, and generating Reconstruction no longer deletes a previously generated Summary. The top-level `Transcript / AI Reconstruction / AI Summary` switcher now matches the state contract: generated AI views remain selectable until a new transcript is fetched or `New transcript` is clicked.
+
+### Tested
+
+- Static check: `doTransform()` no longer contains cross-clears (`S.summaryText = ''` in reconstruct branch, `S.reconstructedText = ''` in summarize branch).
+- Guard check: `doFetch()` and `New transcript` reset still clear both AI outputs.
+- Runtime UI check with `dQw4w9WgXcQ`: fetched transcript → generated Summary → generated Reconstruction → switched back to `AI Summary`; Summary content remained visible and `AI Reconstruction` also remained selectable.
+- `/api/health` → `ok connected`, features `{ reconstruct:true, summarize:true }`.
+
 ## 3.4.4 — 2026-06-21
 
 ### Removed

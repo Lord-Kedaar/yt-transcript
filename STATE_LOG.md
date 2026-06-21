@@ -1,5 +1,35 @@
 # STATE_LOG — ytTranscript
 
+## 2026-06-21 · Preserve Summary + Reconstruction together (3.4.5)
+
+### Decyzje
+- `S.summaryText` i `S.reconstructedText` są teraz niezależnymi wynikami AI dla tego samego transcriptu.
+- `doTransform('reconstruct')` ustawia tylko `S.reconstructedText` i `S.lastReconstructionMeta`; nie kasuje `S.summaryText`.
+- `doTransform('summarize')` ustawia tylko `S.summaryText` i `S.lastAiMeta`; nie kasuje `S.reconstructedText`.
+- Nowy transcript fetch oraz `New transcript` nadal czyszczą oba wyniki — to są granice nowej sesji treści.
+
+### Pliki zmienione
+- `index.html` — usunięte wzajemne czyszczenie wyników w `doTransform()`; dodane komentarze kontraktu stanu.
+- `CHANGELOG.md` — wpis 3.4.5.
+- `STATE_LOG.md` — ten wpis.
+
+### Weryfikacja
+- Static: `doTransform()` nie zawiera cross-clearów (`S.summaryText = ''` w branchu reconstruct ani `S.reconstructedText = ''` w branchu summarize).
+- Guard: `doFetch()` i `resetBtn` nadal czyszczą oba wyniki.
+- Runtime: realny flow w browserze na `dQw4w9WgXcQ`: Fetch transcript → Summary → Reconstruction → click `AI Summary`; Summary pozostało widoczne, `AI Reconstruction` pozostał dostępny.
+- `/api/health`: `ok connected`, features `{reconstruct:true, summarize:true}`.
+
+### Rollback
+```bash
+git revert <commit-3.4.5>
+```
+
+### Ryzyka / ograniczenia
+- Brak zmiany backend/API; zmiana dotyczy tylko front-end state retention.
+- Eksport Markdown/PDF może teraz naturalnie zawierać oba wyniki, jeśli oba są wygenerowane — zgodne z nowym kontraktem.
+
+---
+
 ## 2026-06-21 · Remove redundant internal transcript buttons (3.4.4)
 
 ### Decyzje
