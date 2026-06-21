@@ -187,6 +187,8 @@
 
     .col {
       width: var(--col-w);
+      align-self: center;
+      justify-self: center;
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
@@ -505,7 +507,8 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      align-self: flex-start;
+      align-self: center;
+      justify-self: center;
     }
     .view-tab {
       display: inline-flex;
@@ -602,17 +605,133 @@
     .toolbar {
       display: flex;
       gap: 0.5rem;
-      padding: 0.875rem 1rem;
-      border-top: 1px solid var(--border);
       flex-wrap: wrap;
       justify-content: center;
     }
     .toolbar .btn { justify-content: center; }
 
+    .toolbar-shell {
+      width: var(--col-w);
+      justify-self: center;
+      align-self: center;
+      padding: 0.875rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(24, 24, 27, 0.72);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
     .summary-body {
       padding: 1rem;
       font-size: 0.875rem;
       line-height: 1.65;
+    }
+
+    .prose {
+      color: var(--fg);
+      font-size: 0.9375rem;
+      line-height: 1.78;
+      letter-spacing: -0.005em;
+    }
+
+    .prose > *:first-child { margin-top: 0; }
+    .prose > *:last-child { margin-bottom: 0; }
+
+    .prose p {
+      margin: 0 0 1rem;
+      color: rgba(244, 244, 245, 0.92);
+    }
+
+    .prose h1,
+    .prose h2,
+    .prose h3 {
+      color: var(--fg);
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .prose h1 {
+      font-size: 1.45rem;
+      margin: 0 0 1rem;
+      font-weight: 680;
+    }
+
+    .prose h2 {
+      font-size: 1.15rem;
+      margin: 1.45rem 0 0.6rem;
+      font-weight: 650;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .prose h3 {
+      font-size: 0.98rem;
+      margin: 1.15rem 0 0.45rem;
+      font-weight: 620;
+      color: rgba(244, 244, 245, 0.96);
+    }
+
+    .prose ul,
+    .prose ol {
+      margin: 0.65rem 0 1rem 1.25rem;
+      padding: 0;
+      color: rgba(244, 244, 245, 0.9);
+    }
+
+    .prose li {
+      margin: 0.35rem 0;
+      padding-left: 0.2rem;
+    }
+
+    .prose li::marker { color: var(--accent); }
+
+    .prose strong {
+      color: var(--fg);
+      font-weight: 680;
+    }
+
+    .prose em {
+      color: rgba(244, 244, 245, 0.86);
+      font-style: italic;
+    }
+
+    .prose a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-decoration-color: rgba(132, 204, 22, 0.35);
+      text-underline-offset: 3px;
+    }
+
+    .prose code {
+      font-family: var(--font-mono);
+      font-size: 0.86em;
+      color: var(--accent);
+      background: rgba(132, 204, 22, 0.08);
+      border: 1px solid rgba(132, 204, 22, 0.14);
+      border-radius: 0.35rem;
+      padding: 0.1rem 0.3rem;
+    }
+
+    .prose pre {
+      margin: 1rem 0;
+      padding: 0.9rem 1rem;
+      overflow-x: auto;
+      background: rgba(9, 9, 11, 0.72);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+    }
+
+    .prose pre code {
+      display: block;
+      padding: 0;
+      color: rgba(244, 244, 245, 0.9);
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      white-space: pre;
     }
 
     .summary-intro {
@@ -1183,46 +1302,9 @@
       <p class="empty-state-sub">After fetching, you can reconstruct the text, generate a summary, export the file, or use TTS.</p>
     </div>
 
-    <!-- VIEW SWITCHER (sibling of cards; visible only after transcript loads) -->
-    <div class="view-switcher" id="viewSwitcher" role="group" aria-label="Content view" style="display:none">
-      <button class="view-tab" id="viewTranscript"     type="button" aria-pressed="true"  aria-controls="transcriptCard">Transcript</button>
-      <button class="view-tab" id="viewReconstruction" type="button" aria-pressed="false" aria-controls="transcriptCard" disabled title="Generate AI reconstruction first">AI Reconstruction</button>
-      <button class="view-tab" id="viewSummary"        type="button" aria-pressed="false" aria-controls="summaryCard"      disabled title="Generate AI summary first">AI Summary</button>
-    </div>
-
-    <!-- TRANSCRIPT CARD -->
-    <section class="card" id="transcriptCard" style="display:none" role="region" aria-label="Transcript view">
-      <div class="card-header">
-        <div class="card-title">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-          </svg>
-          Transcript
-        </div>
-        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
-          <span class="badge badge-muted" id="langBadge">—</span>
-          <span class="badge badge-muted" id="charBadge">—</span>
-          <span class="badge badge-accent" id="reconstructionMetaBadge" style="display:none"></span>
-          <div class="seg-control" id="transcriptModeControl" role="group" aria-label="Transcript view mode">
-            <button class="seg-btn active" id="modeRaw" type="button">Raw</button>
-            <button class="seg-btn" id="modeAI" type="button" disabled>AI reconstruction</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="transcript-body" id="transcriptBody" role="region" aria-label="Transcript content" aria-live="polite">
-        <div class="transcript-raw" id="transcriptRaw"></div>
-        <div class="transcript-reconstructed" id="transcriptReconstructed" style="display:none"></div>
-      </div>
-
-      <div class="ai-progress" id="aiProgress" style="display:none" role="status" aria-live="polite">
-        <div class="ai-progress-spinner" aria-hidden="true"></div>
-        <span id="aiProgressText"></span>
-      </div>
-
+    <!-- ACTION TOOLBAR (top-level; visible only after transcript loads) -->
       <!-- Toolbar -->
-      <div style="padding:0.875rem 1rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:0.5rem;align-items:center;">
+    <div class="toolbar-shell" id="toolbarShell" style="display:none">
         <div class="toolbar" id="toolbar">
           <button class="btn btn-ai" id="reconstructBtn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
@@ -1280,6 +1362,45 @@
           </button>
         </div>
       </div>
+
+    <!-- VIEW SWITCHER (sibling of cards; visible only after transcript loads) -->
+    <div class="view-switcher" id="viewSwitcher" role="group" aria-label="Content view" style="display:none">
+      <button class="view-tab" id="viewTranscript"     type="button" aria-pressed="true"  aria-controls="transcriptCard">Transcript</button>
+      <button class="view-tab" id="viewReconstruction" type="button" aria-pressed="false" aria-controls="transcriptCard" disabled title="Generate AI reconstruction first">AI Reconstruction</button>
+      <button class="view-tab" id="viewSummary"        type="button" aria-pressed="false" aria-controls="summaryCard"      disabled title="Generate AI summary first">AI Summary</button>
+    </div>
+
+    <!-- TRANSCRIPT CARD -->
+    <section class="card" id="transcriptCard" style="display:none" role="region" aria-label="Transcript view">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Transcript
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+          <span class="badge badge-muted" id="langBadge">—</span>
+          <span class="badge badge-muted" id="charBadge">—</span>
+          <span class="badge badge-accent" id="reconstructionMetaBadge" style="display:none"></span>
+          <div class="seg-control" id="transcriptModeControl" role="group" aria-label="Transcript view mode">
+            <button class="seg-btn active" id="modeRaw" type="button">Raw</button>
+            <button class="seg-btn" id="modeAI" type="button" disabled>AI reconstruction</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="transcript-body" id="transcriptBody" role="region" aria-label="Transcript content" aria-live="polite">
+        <div class="transcript-raw" id="transcriptRaw"></div>
+        <div class="transcript-reconstructed prose" id="transcriptReconstructed" style="display:none"></div>
+      </div>
+
+      <div class="ai-progress" id="aiProgress" style="display:none" role="status" aria-live="polite">
+        <div class="ai-progress-spinner" aria-hidden="true"></div>
+        <span id="aiProgressText"></span>
+      </div>
+
     </section>
 
     <!-- SUMMARY CARD -->
@@ -1304,7 +1425,7 @@
           </button>
         </div>
       </div>
-      <div class="summary-body" id="summaryBody">
+      <div class="summary-body prose" id="summaryBody">
         <p class="summary-placeholder">A summary will appear here after you click "Summarize with AI".</p>
       </div>
       <div class="panel-footer" id="summaryFooter" style="display:none">
@@ -1436,6 +1557,7 @@
     const urlError      = $('urlError');
     const urlErrorText  = $('urlErrorText');
     const emptyState    = $('emptyState');
+    const toolbarShell  = $('toolbarShell');
     const transcriptCard= $('transcriptCard');
     const summaryCard   = $('summaryCard');
     const ttsCollapsible= $('ttsCollapsible');
@@ -1523,6 +1645,8 @@
     /* RENDER: EMPTY */
     function renderEmpty() {
       emptyState.style.display = 'block';
+      toolbarShell.style.display = 'none';
+      viewSwitcher.style.display = 'none';
       transcriptCard.style.display = 'none';
       summaryCard.style.display = 'none';
       ttsCollapsible.style.display = 'none';
@@ -1598,6 +1722,7 @@
     function renderTranscript() {
       if (!S.transcriptData) return;
       emptyState.style.display = 'none';
+      toolbarShell.style.display = 'flex';
       // transcriptCard visibility is owned by renderActiveView now; ensure visible when active
       if (S.activeView !== 'summary') {
         transcriptCard.style.display = 'block';

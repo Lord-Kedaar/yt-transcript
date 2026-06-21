@@ -1,5 +1,21 @@
 # Changelog
 
+## 3.4.3 — 2026-06-21
+
+### UI layout + AI text rendering fixes
+
+- **Action toolbar moved above content** — `Reconstruct with AI`, `Summarize with AI`, `Export…` and `New transcript` were physically inside `#transcriptCard`, below the transcript body. Moved them into top-level `#toolbarShell` between the URL form/empty state and the `Transcript / AI Reconstruction / AI Summary` switcher, so the action buttons now sit above the transcript/summary panel.
+- **URL field centering restored** — `.col` now has `align-self:center` and `justify-self:center`; browser geometry check: URL section center diff `0px` at 1470px viewport.
+- **Post-result tabs centered** — `.view-switcher` now has `align-self:center` and `justify-self:center`; browser geometry check: tabs center diff `0px`.
+- **LLM output rendered as prose** — summary and reconstruction containers now use `.prose` styles for headings, paragraphs, lists, links, inline code and code blocks. Browser computed-style check: `h2` 18.4px with bottom border, paragraph line-height 26.7px, code block background/padding present.
+
+### Tested
+
+- `/api/health` → `ok remote connected`, features `{ reconstruct:true, summarize:true }`.
+- `node --check server.js` → OK.
+- Static source checks → 7/7 PASS: toolbar order, top-level placement, URL centering CSS, tabs centering CSS, prose classes, toolbar toggle.
+- Browser geometry check → toolbar sits between URL and content (`toolbarAboveTabsAndCard=true`), URL/toolbar/tabs/card center diff `0px`.
+
 ## 3.4.2 — 2026-06-21
 
 ### CSS layout fixes — toolbar centering + sticky footer

@@ -1,5 +1,91 @@
 # STATE_LOG — ytTranscript
 
+## 2026-06-21 · UI layout corrections + prose renderer polish (3.4.3)
+
+### Decyzje
+- **Toolbar placement**: akcje AI/export/reset są top-level `#toolbarShell`, nie dzieckiem `#transcriptCard`. DOM order po poprawce: URL form → empty/toolbar slot → `#toolbarShell` → `#viewSwitcher` → `#transcriptCard` / `#summaryCard`.
+- **Centrowanie URL**: `.col` dostał `align-self:center` + `justify-self:center`, bo samo `width: var(--col-w)` nie centruje elementu w grid/flex parent.
+- **Centrowanie tabs**: `.view-switcher` dostał `align-self:center` + `justify-self:center`; wcześniejsze `align-self:flex-start` wymuszało wizualny drift w lewo.
+- **Render LLM**: summary i reconstruction używają `.prose` — heading hierarchy, paragraph rhythm, list markers, link style, inline code i fenced code block styling. Markdown parser `md()` pozostał bez zmiany logiki sanitizacji.
+
+### Pliki zmienione
+- `index.html` — CSS centering, nowy `#toolbarShell`, `.prose`, JS toggle `toolbarShell.style.display`, prose classes on `#summaryBody` and `#transcriptReconstructed`.
+- `CHANGELOG.md` — wpis 3.4.3.
+- `STATE_LOG.md` — ten wpis.
+
+### Weryfikacja
+- Server: `curl http://localhost:4000/api/health` → `ok remote connected`, features `{reconstruct:true, summarize:true}`.
+- Syntax: `node --check server.js` → OK.
+- Static checks: 7/7 PASS — toolbar top-level before switcher/card, toolbar removed from transcript card body, URL centering CSS, switcher centering CSS, prose on summary/reconstruction, toolbar show/hide toggle.
+- Browser DOM geometry at 1470px viewport: URL center diff `0px`; toolbar center diff `0px`; tabs center diff `0px`; card center diff `0px`; `toolbarAboveTabsAndCard=true`.
+- Browser computed prose: `summary-body prose`, `transcript-reconstructed prose`, `h2` 18.4px + border, paragraph line-height 26.7px, code block background/padding present.
+
+### Rollback
+```bash
+git revert <commit-3.4.3>
+# albo precyzyjnie:
+git checkout HEAD~1 -- index.html CHANGELOG.md STATE_LOG.md
+```
+
+### Ryzyka / ograniczenia
+- Repo nadal ma wcześniejsze unstaged zmiany w `DESIGN.md`, `server.js`, `client/*` i `MERGE_BRIEF.md`; nie były częścią tej poprawki i nie zostały dodane do commita 3.4.3.
+- Weryfikacja wizualna wykonana przez DOM/computed-style geometry, nie przez screenshot.
+
+---
+
+## 2026-06-21 · Surgical UI/state fix v3.4.1 (3.4.1)
+
+### Decyzje
+- **Active view model**: `S.activeView = 'transcript' | 'reconstruction' | 'summary'`. Jeden content panel, view switcher z 3 buttonami (Transcript / AI Reconstruction / AI Summary). Tabs z `aria-pressed` + `aria-controls` na istniejące cards (nie nowy wrapper).
+- **AI status state machine**: 4 states — `checking` (pulse, init/probe), `online` (lime, oba features), `partial` (amber, jeden feature), `offline` (red, backend unreachable). Bug z v3.4.0: stare `applyProviderStatus` czytał `data.state || data.status`, gdzie `/api/health` zwracał `"ok"` — zawsze lądowało na default `'AI · offline'`. Naprawione: `mapHealthToState()` używa `data.status === 'ok'` + `data.features`.
+- **Stale-probe protection**: monotonic `probeSeq` counter, sprawdzany w KAŻDYM path (fetch, parse, HTTP error, reject). Codex r5#1 Critical finding.
+- **/api/health extended**: nowe pola `mode`, `features.reconstruct/summarize`, `latencyMs`, `checkedAt`. Features derived from `Object.keys(TRANSFORM_PROMPTS)` — partial state staje się reachable gdy jeden prompt zostanie usunięty w przyszłości.
+- **/api/transform extended**: nowe pola `elapsedMs` (mierzony wokół chat call) + `tokens` (z `result.raw.usage.total_tokens`). Zmiana schema response, ale backwards compatible (nowe pola dodane).
+- **Contract uniformity**: type='reconstruct'|'summarize' to jedyni dozwoleni w payload. View names ('reconstruction', 'summary') tylko w UI. Backend validation (linia 1017) + frontend consistency.
+- **Read aloud button usunięty** z Transcript toolbara (`ttsToggleBtn` HTML + listener). `<details id="ttsCollapsible">` zostawiony w DOM, ukryty CSS `#ttsCollapsible { display: none !important; }`. `/api/tts` endpoint nietknięty — dostępny dla przyszłego Piper run.
+- **AI button dot+icon anti-pattern**: `.btn-ai::before` usunięty (był to lime 6px dot obok ikony SVG). Teraz: lime border, lime hover bg, lime focus-visible ring. Zero dekoracyjnych kropek.
+- **white-space: nowrap** na `.btn` — przyciski nie łamią się na desktopie.
+- **Metadata badge = real data**: usunięty literal "Generated · model · time · tokens" placeholder. Dynamic build z `model/elapsedMs/tokens` z response. 4 kształty. Ukryty gdy brak danych. Lime accent (badge-accent), NIE fiolet (primary), bo AI = lime per brief §17.
+- **Markdown rendering**: `md()` function — escapeHtml first → block tokens (code fence, headings, lists, paragraphs) → inline transforms (code, bold, italic, links z URL validation). Zastępuje stary mini-parser `parseSummaryHtml`. Aplikowany do summary I reconstruction.
+- **providerBadge** zmieniony z `<div>` na `<button type="button">` — poprawny button role, click/Enter/Space trigger probeHealth.
+
+### Codex review iterations
+- REV 1-6 (6 rund) plan review przed implementacją. Findings dotyczyły: extend /api/health instead of new endpoint, stale-probe protection, aria-pressed vs aria-selected, both-features-false edge case, real test plan with round-trip.
+- Post-impl review: APPROVED z 1 Important + 1 Suggestion, oba zaaplikowane.
+
+### Pliki zmienione
+- `server.js` — `/api/health` extended (latencyMs/mode/features/checkedAt), `/api/transform` extended (elapsedMs/tokens). +25 linii.
+- `index.html` — surgical CSS+DOM+JS. 60,978 B → 78,320 B (+17 KB).
+- `CHANGELOG.md` — 3.4.1 entry.
+- `STATE_LOG.md` — ten wpis.
+- Backupy: `server.js.backup-20260621-before-v3.4.1-fix`, `index.html.backup-20260621-before-v3.4.1-fix`.
+
+### Acceptance (18/18 pass)
+- Toolbar buttons IDs present, no Read aloud, .btn-ai::before removed, white-space:nowrap, 3 view tabs, type='reconstruction' rejected (400), type='reconstruct' 200, type='summarize' 200, no static 'AI · offline' default, providerBadge is button, no 'model · time · tokens' placeholder, /api/health has new fields, /api/transform has elapsedMs+tokens, ::before pseudo gone, #ttsCollapsible hidden via CSS, activeView state field, probeHealth function, md() function.
+
+### End-to-end smoke
+- /api/health: status=ok, mode=remote, features={reconstruct:true, summarize:true}, latencyMs=494
+- /api/lm-status: ok=true, state=connected
+- /api/transcript: 61 snippets (Rick Astley)
+- /api/transform reconstruct: 91ms, 121 tokens
+- /api/transform summarize: 1980ms, 578 tokens
+- UI: HTTP 200, 78,320 B
+
+### Rollback
+```bash
+cp server.js.backup-20260621-before-v3.4.1-fix server.js
+cp index.html.backup-20260621-before-v3.4.1-fix index.html
+./manage.sh restart
+```
+
+### Znalezione side-issues (out of scope)
+- DESIGN.md ma unstaged changes (pre-existing, nietknięte — patrz STATE_LOG v3.4.0).
+- client/src/* React SPA archaeology — nietknięte (nieserwowane).
+- /api/tts endpoint orphan (TTS button removed z UI, ale endpoint aktywny) — zostawiony dla przyszłego Piper run.
+- STATE_LOG.md ma znacznik "PROMPT_YTTRANSCRIPT_UI_STATE_PLUS_AI_STATUS_FIX.md" w nazwie — to nazwa tego runa.
+
+---
+
 ## 2026-06-21 · Rhea UI redesign + multi-lang translate (3.4.0)
 
 ### Decyzje
