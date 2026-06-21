@@ -3,8 +3,10 @@
 ## Ścieżka na serwerze
 
 ```
-/opt/yt-transcript/
+/srv/storage/AI_Projects/yt-transcript/
 ```
+
+**WAŻNE:** Na Lenovo port `4000` i `4001` są zablokowane przez Tailscale Serve (port 4000 = `tailscale serve` dla aplikacji AI Idea Forge). Używaj **portu 4002** lub wyższego.
 
 ## Wymagania
 
@@ -12,14 +14,14 @@
 - npm
 - Python 3.9+ (dla Piper TTS)
 - Dostęp SSH do Lenovo Server
-- Port docelowy: **4001** (jeśli zajęty → sprawdź `ss -tlnp | grep 400`)
+- Port docelowy: **4002** (4000/4001 zablokowane przez Tailscale Serve)
 
 ## 1. Przygotowanie katalogu
 
 ```bash
-sudo mkdir -p /opt/yt-transcript
-sudo chown $USER /opt/yt-transcript
-cd /opt/yt-transcript
+sudo mkdir -p /srv/storage/AI_Projects/yt-transcript
+sudo chown $USER /srv/storage/AI_Projects/yt-transcript
+cd /srv/storage/AI_Projects/yt-transcript
 ```
 
 ## 2. Klonowanie / kopiowanie projektu
@@ -31,7 +33,7 @@ git clone https://github.com/Lord-Kedaar/yt-transcript.git .
 # Lub rsync z Maca (jeśli masz lokalną kopię)
 rsync -avz --exclude='node_modules' --exclude='.env' \
   /Users/radek/Documents/Projects/yt-transcript/ \
-  $USER@<LENOVO_IP>:/opt/yt-transcript/
+  $USER@<LENOVO_IP>:/srv/storage/AI_Projects/yt-transcript/
 ```
 
 ## 3. .env na serwerze
@@ -45,12 +47,16 @@ Minimalna konfiguracja produkcyjna:
 
 ```env
 NODE_ENV=production
-PORT=4001
+PORT=4002
 
-# LLM Provider — ustaw zgodnie z posiadanym dostępem
+# LLM Provider
 LLM_PROVIDER=groq
 GROQ_API_KEY=twoj_klucz
-GROQ_MODEL=openai/gpt-oss-20b
+GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+
+# Piper TTS
+PIPER_BIN=/home/radek/.local/bin/piper
+PIPER_MODELS_DIR=/home/radek/.hermes/piper-models
 
 # Demo limit — jedna linijka do włączenia
 YTTRANSCRIPT_AI_DAILY_LIMIT_ENABLED=true
@@ -68,31 +74,19 @@ YTTRANSCRIPT_PRIVACY_POLICY_URL=https://radoslaw-pleskot.com/privacy
 # Instalacja Piper (wymaga Python 3.9+)
 pip3 install piper-tts
 
-# Kopia bina do PATH
-sudo cp "$(which piper)" /usr/local/bin/piper
+# Bina jest w ~/.local/bin/ — ścieżka do dodania w .env:
+# PIPER_BIN=/home/radek/.local/bin/piper
 
-# Tworzenie katalogu na modele głosowe
-sudo mkdir -p /opt/yt-transcript/piper-models
-sudo chown $USER /opt/yt-transcript/piper-models
+# Modele głosowe — katalog na serwerze:
+mkdir -p /home/radek/.hermes/piper-models
 
-# Pobranie modeli głosowych
+# Pobranie modeli głosowych (rsync z Maca lub wget):
 # PL:
-curl -L -o /opt/yt-transcript/piper-models/pl_PL-justyna_wg_glos-medium.onnx \
-  "https://github.com/rk699/PiperModels/raw/main/pl_PL-justyna_wg_glos-medium.onnx"
-curl -L -o /opt/yt-transcript/piper-models/pl_PL-justyna_wg_glos-medium.onnx.json \
-  "https://github.com/rk699/PiperModels/raw/main/pl_PL-justyna_wg_glos-medium.onnx.json"
-
+# wget -O pl_PL-justyna_wg_glos-medium.onnx "URL_do_modelu"
 # EN:
-curl -L -o /opt/yt-transcript/piper-models/en_US-hfc_female-medium.onnx \
-  "https://github.com/rk699/PiperModels/raw/main/en_US-hfc_female-medium.onnx"
-curl -L -o /opt/yt-transcript/piper-models/en_US-hfc_female-medium.onnx.json \
-  "https://github.com/rk699/PiperModels/raw/main/en_US-hfc_female-medium.onnx.json"
-
+# wget -O en_US-hfc_female-medium.onnx "URL_do_modelu"
 # DE:
-curl -L -o /opt/yt-transcript/piper-models/de_DE-thorsten-medium.onnx \
-  "https://github.com/rk699/PiperModels/raw/main/de_DE-thorsten-medium.onnx"
-curl -L -o /opt/yt-transcript/piper-models/de_DE-thorsten-medium.onnx.json \
-  "https://github.com/rk699/PiperModels/raw/main/de_DE-thorsten-medium.onnx.json"
+# wget -O de_DE-thorsten-medium.onnx "URL_do_modelu"
 
 # Weryfikacja
 piper --version
@@ -110,16 +104,17 @@ npm install
 ## 5. Weryfikacja build
 
 ```bash
-npm run build   # generuje client/dist/build-info.json
+npm install          # instalacja express + cors
+npm run build       # generuje client/dist/build-info.json
 node --check server.js   # powinno wypisać "OK"
 ```
 
 ## 6. Uruchomienie testowe
 
 ```bash
-PORT=4001 node server.js &
+PORT=4002 node server.js &
 sleep 2
-curl -s http://127.0.0.1:4001/api/health | python3 -m json.tool | head -20
+curl -s http://127.0.0.1:4002/api/health | python3 -m json.tool | head -20
 ```
 
 Spodziewany wynik: `{"status": "ok", ...}`
@@ -136,11 +131,12 @@ After=network.target
 [Service]
 Type=simple
 User=<YOUR_USER>
-WorkingDirectory=/opt/yt-transcript
+WorkingDirectory=/srv/storage/AI_Projects/yt-transcript
 ExecStart=/usr/bin/env node server.js
 Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
+Environment=PORT=4002
 
 [Install]
 WantedBy=multi-user.target
@@ -161,7 +157,7 @@ sudo systemctl status yt-transcript
 
 ```bash
 # Otwórz port tylko dla LAN (lub Cloudflare Tunnel)
-sudo ufw allow 4001/tcp comment 'ytTranscript'
+sudo ufw allow 4002/tcp comment 'ytTranscript'
 sudo ufw reload
 ```
 
@@ -176,7 +172,7 @@ server {
     server_name yttranscript.radoslaw-pleskot.com;
 
     location / {
-        proxy_pass http://127.0.0.1:4001;
+        proxy_pass http://127.0.0.1:4002;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -227,8 +223,8 @@ Jedna linijka → restart → gotowe.
 
 | Ścieżka | Uprawnienia | Opis |
 |---|---|---|
-| `/opt/yt-transcript/.env` | 600 | Zmienne produkcyjne |
-| `/opt/yt-transcript/.ai-daily-limit.json` | 644 | Limit store (tworzony automatycznie) |
+| `/srv/storage/AI_Projects/yt-transcript/.env` | 600 | Zmienne produkcyjne |
+| `/srv/storage/AI_Projects/yt-transcript/.ai-daily-limit.json` | 644 | Limit store (tworzony automatycznie) |
 | `/tmp/tts-cache/*.wav` | 1777 | Cache TTS audio (systemowy tmp) |
 
 ## Po restarcie serwera
@@ -256,11 +252,27 @@ sudo journalctl -u yt-transcript -f
 - [ ] Popup demo wyświetla się przy pierwszym wejściu
 - [ ] AI actions działają i limit się zmniejsza
 
+## Konflikt z Tailscale Serve (port 4000)
+
+**Problem:** Port `4000` na Lenovo jest zarezerwowany dla Tailscale Serve (`tailscale serve --https=4000 http://localhost:5173`). Prób uruchomienia aplikacji na porcie 4000 skutkuje natychmiastowym SIGTERM.
+
+**Rozwiązanie:** Używaj portu `4002` lub wyższego.
+
+**Alternatywnie** — przenieś aplikację na inny port i skonfiguruj Tailscale Serve jako reverse proxy:
+```bash
+# W .env
+PORT=4002
+```
+```bash
+# Na serwerze — Tailscale Serve proxy do ytTranscript
+tailscale serve --https=4000 http://localhost:4002
+```
+
 ## Rozwiązywanie problemów
 
 ```bash
 # Port zajęty
-ss -tlnp | grep 4001
+ss -tlnp | grep 4002
 
 # Logi systemd
 sudo journalctl -u yt-transcript --no-pager -n 50
@@ -269,6 +281,6 @@ sudo journalctl -u yt-transcript --no-pager -n 50
 ps aux | grep "node server" | grep -v grep
 
 # Test API bezpośrednio
-curl -s http://127.0.0.1:4001/api/health
-curl -s http://127.0.0.1:4001/api/ai-limit-status
+curl -s http://127.0.0.1:4002/api/health
+curl -s http://127.0.0.1:4002/api/ai-limit-status
 ```
