@@ -1435,7 +1435,7 @@ app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
 
     // 4. TTS-prep LLM — silently clean text for Piper
     console.log(`[TTS] Preparing ${type} text (${text.length} chars) for Piper in ${resolvedLang}...`);
-    const llm = llmProvider();
+    const llm = llmProvider;
     const prepMessages = [
       { role: 'system', content: TTS_PREP_SYSTEM_PROMPTS[resolvedLang] || TTS_PREP_SYSTEM_PROMPTS.en },
       { role: 'user', content: buildPiperPrepUserPrompt(text, type, resolvedLang) },

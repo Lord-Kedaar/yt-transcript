@@ -1,5 +1,38 @@
 # Changelog
 
+## 3.4.7 — 2026-06-21
+
+### Fixed
+
+- **`server.js:1438` — `llmProvider()` bug** — `/api/tts` called `llmProvider()` as a factory, but `llmProvider` is a provider object (result of `buildLlmProvider()`). Fixed: `llmProvider()` → `llmProvider`. Before the fix every TTS request returned `{"error":"Audio generation failed: llmProvider is not a function"}`.
+- **Footer layout overflow** — `.footer` had `position: sticky; bottom: 0` which caused it to overlay content on long summaries. Fixed: removed `position: sticky; bottom: 0`, added `margin-top: auto` so footer flows naturally in the CSS Grid body layout.
+
+### Changed
+
+- **`.env` — Piper configuration** — added `PIPER_BIN=/Users/radek/Library/Python/3.9/bin/piper` and `PIPER_MODELS_DIR=/Users/radek/.hermes/piper-models` (previously absent from `.env`).
+- **`package.json`** — added `"start:prod": "node server.js"` script for production use without Vite.
+- **`.env.example`** — updated `PIPER_BIN`/`PIPER_MODELS_DIR` to Linux paths with macOS paths in comments; now documents both platforms.
+- **`DEPLOYMENT_LENOVO_LINUX.md`** — added Python 3.9+ to requirements; added section 3a "Piper TTS (opcjonalny)" with full Linux install instructions including model download URLs.
+
+### Audio QA — Verified
+
+| Lang | Input | Output | Size | Whisper transcription | Result |
+|------|-------|--------|------|----------------------|--------|
+| PL | "Dzień dobry..." | WAV | 246–404 KB | "Dzień dobry, to jest test syntezatora mowy Piper..." | ✅ PASS |
+| EN | "Hello world..." | WAV | 295–512 KB | "Hello, this is a test of the Piper Text-to-Speech system..." | ✅ PASS |
+| DE | "Guten Tag..." | WAV | 293–363 KB | "Guten Tag, dies ist ein Test der Piper Sprachsynthese..." | ✅ PASS |
+
+Whisper validation via Groq API (`whisper-large-v3`). All three languages: perfect text match, correct language detection.
+
+### Tested
+
+- `node --check server.js` → OK
+- `npm run build` → OK (286 modules, 1.17s)
+- `curl POST /api/tts {language:"en"}` → HTTP 200 + valid WAV file
+- Whisper re-transcription PL/EN/DE → exact match
+- Footer sticky removed: grep confirms no `position: sticky` on `.footer`
+- `start:prod` script added to `package.json`
+
 ## 3.4.6 — 2026-06-21
 
 ### Added

@@ -10,6 +10,7 @@
 
 - Node.js 18+
 - npm
+- Python 3.9+ (dla Piper TTS)
 - Dostęp SSH do Lenovo Server
 - Port docelowy: **4001** (jeśli zajęty → sprawdź `ss -tlnp | grep 400`)
 
@@ -60,6 +61,45 @@ YTTRANSCRIPT_CONTACT_EMAIL=kontakt@radoslaw-pleskot.com
 YTTRANSCRIPT_PROJECT_DESCRIPTION_URL=https://radoslaw-pleskot.com/portfolio/yttranscript
 YTTRANSCRIPT_PRIVACY_POLICY_URL=https://radoslaw-pleskot.com/privacy
 ```
+
+## 3a. Piper TTS (opcjonalny)
+
+```bash
+# Instalacja Piper (wymaga Python 3.9+)
+pip3 install piper-tts
+
+# Kopia bina do PATH
+sudo cp "$(which piper)" /usr/local/bin/piper
+
+# Tworzenie katalogu na modele głosowe
+sudo mkdir -p /opt/yt-transcript/piper-models
+sudo chown $USER /opt/yt-transcript/piper-models
+
+# Pobranie modeli głosowych
+# PL:
+curl -L -o /opt/yt-transcript/piper-models/pl_PL-justyna_wg_glos-medium.onnx \
+  "https://github.com/rk699/PiperModels/raw/main/pl_PL-justyna_wg_glos-medium.onnx"
+curl -L -o /opt/yt-transcript/piper-models/pl_PL-justyna_wg_glos-medium.onnx.json \
+  "https://github.com/rk699/PiperModels/raw/main/pl_PL-justyna_wg_glos-medium.onnx.json"
+
+# EN:
+curl -L -o /opt/yt-transcript/piper-models/en_US-hfc_female-medium.onnx \
+  "https://github.com/rk699/PiperModels/raw/main/en_US-hfc_female-medium.onnx"
+curl -L -o /opt/yt-transcript/piper-models/en_US-hfc_female-medium.onnx.json \
+  "https://github.com/rk699/PiperModels/raw/main/en_US-hfc_female-medium.onnx.json"
+
+# DE:
+curl -L -o /opt/yt-transcript/piper-models/de_DE-thorsten-medium.onnx \
+  "https://github.com/rk699/PiperModels/raw/main/de_DE-thorsten-medium.onnx"
+curl -L -o /opt/yt-transcript/piper-models/de_DE-thorsten-medium.onnx.json \
+  "https://github.com/rk699/PiperModels/raw/main/de_DE-thorsten-medium.onnx.json"
+
+# Weryfikacja
+piper --version
+```
+
+> **Uwaga:** Jeśli modeli nie da się pobrać automatycznie, sklonuj repo
+> `https://github.com/rk699/PiperModels` i skopiuj pliki ręcznie.
 
 ## 4. Instalacja zależności
 
