@@ -1,5 +1,35 @@
 # STATE_LOG — ytTranscript
 
+## 2026-06-21 · Remove redundant internal transcript buttons (3.4.4)
+
+### Decyzje
+- Usunięto zaznaczony na screenshotcie wewnętrzny `Raw / AI reconstruction` segmented control z nagłówka `#transcriptCard`.
+- Jako jedyny mechanizm przełączania widoków zostaje top-level `#viewSwitcher`: `Transcript / AI Reconstruction / AI Summary`.
+- Funkcje `showRaw()` i `showReconstructed()` zostają, ale bez sterowania usuniętymi buttonami; nadal są używane przez `setActiveView()`.
+
+### Pliki zmienione
+- `index.html` — usunięte: DOM `#transcriptModeControl`, CSS `.seg-control/.seg-btn`, JS refs/listeners `modeRaw/modeAI`.
+- `CHANGELOG.md` — wpis 3.4.4.
+- `STATE_LOG.md` — ten wpis.
+
+### Weryfikacja
+- Static source check: zero wystąpień `modeRaw`, `modeAI`, `transcriptModeControl`, `seg-control`, `seg-btn`.
+- HTML parser: OK, 58 IDs, zero duplikatów.
+- Served HTML `http://localhost:4000/?v=remove-internal-tabs`: usunięte kontrolki absent, top-level switcher present.
+- Browser DOM after simulated reconstruction state: forbidden selectors count `0`; visible tabs remain `Transcript`, `AI Reconstruction`, `AI Summary`.
+- `/api/health`: `ok connected`, features `{reconstruct:true, summarize:true}`.
+
+### Rollback
+```bash
+git revert <commit-3.4.4>
+```
+
+### Ryzyka / ograniczenia
+- Brak zmiany backend/API.
+- Repo nadal ma wcześniejsze unstaged zmiany poza tym commitem; nie zostały dodane do stagingu.
+
+---
+
 ## 2026-06-21 · UI layout corrections + prose renderer polish (3.4.3)
 
 ### Decyzje

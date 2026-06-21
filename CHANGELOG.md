@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.4.4 — 2026-06-21
+
+### Removed
+
+- **Redundant internal transcript mode buttons** — removed the circled `Raw / AI reconstruction` segmented control from the Transcript card header. The top-level `Transcript / AI Reconstruction / AI Summary` switcher remains the single canonical navigation control.
+- Removed dead CSS (`.seg-control`, `.seg-btn`) and JS references/listeners (`modeRaw`, `modeAI`) tied to the deleted controls.
+
+### Tested
+
+- Static source check: zero `modeRaw`, `modeAI`, `transcriptModeControl`, `seg-control`, `seg-btn` references.
+- Served HTML check at `/?v=remove-internal-tabs`: deleted controls absent; top-level switcher still present.
+- Browser DOM check after simulated reconstruction state: forbidden selectors count `0`; visible tabs remain `Transcript`, `AI Reconstruction`, `AI Summary`.
+- `/api/health` → `ok connected`, features `{ reconstruct:true, summarize:true }`.
+
 ## 3.4.3 — 2026-06-21
 
 ### UI layout + AI text rendering fixes

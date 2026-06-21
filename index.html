@@ -461,43 +461,6 @@
       flex-shrink: 0;
     }
 
-    /* ===== SEGMENTED CONTROL ===== */
-    .seg-control {
-      display: flex;
-      background: var(--surface-2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 3px;
-      gap: 2px;
-    }
-
-    .seg-btn {
-      flex: 1;
-      height: 28px;
-      padding: 0 0.625rem;
-      background: transparent;
-      border: none;
-      border-radius: 4px;
-      color: var(--muted-2);
-      font-size: 0.75rem;
-      font-weight: 500;
-      font-family: var(--font);
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.15s cubic-bezier(0.2, 0, 0, 1), color 0.15s cubic-bezier(0.2, 0, 0, 1);
-    }
-    .seg-btn:hover:not(.active) { background: var(--surface); color: var(--muted); }
-
-    .seg-btn.active {
-      background: var(--primary);
-      color: #fff;
-    }
-
-    .seg-btn:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-
     /* ===== VIEW SWITCHER (top-level tabs above content panel) ===== */
     .view-switcher {
       display: inline-flex;
@@ -1384,10 +1347,6 @@
           <span class="badge badge-muted" id="langBadge">—</span>
           <span class="badge badge-muted" id="charBadge">—</span>
           <span class="badge badge-accent" id="reconstructionMetaBadge" style="display:none"></span>
-          <div class="seg-control" id="transcriptModeControl" role="group" aria-label="Transcript view mode">
-            <button class="seg-btn active" id="modeRaw" type="button">Raw</button>
-            <button class="seg-btn" id="modeAI" type="button" disabled>AI reconstruction</button>
-          </div>
         </div>
       </div>
 
@@ -1583,8 +1542,6 @@
     const summaryFooter = $('summaryFooter');
     const summaryCharCount = $('summaryCharCount');
     const copySummaryBtn= $('copySummaryBtn');
-    const modeRaw       = $('modeRaw');
-    const modeAI        = $('modeAI');
     const ttsLangBtns   = document.querySelectorAll('.tts-lang-btn');
     const providerRing  = $('providerRing');
     const providerLabel = $('providerLabel');
@@ -1748,15 +1705,7 @@
 
       if (S.reconstructedText) {
         transcriptReconstructed.innerHTML = md(S.reconstructedText);
-        modeAI.disabled = false;
-      } else {
-        modeAI.disabled = true;
       }
-      // Sync the internal Raw/AI segmented buttons with the current activeView
-      // so they don't drift after reconstruction (Codex review Important #1).
-      const showRaw = (S.activeView !== 'reconstruction');
-      modeRaw.classList.toggle('active', showRaw);
-      modeAI.classList.toggle('active', !showRaw);
       renderReconstructionMeta();
       syncViewSwitcher();
     }
@@ -1764,15 +1713,11 @@
     function showRaw() {
       transcriptRaw.style.display = 'block';
       transcriptReconstructed.style.display = 'none';
-      modeRaw.classList.add('active');
-      modeAI.classList.remove('active');
     }
 
     function showReconstructed() {
       transcriptRaw.style.display = 'none';
       transcriptReconstructed.style.display = 'block';
-      modeRaw.classList.remove('active');
-      modeAI.classList.add('active');
     }
 
     /* SAFE MARKDOWN RENDERER (brief §15)
@@ -2004,7 +1949,6 @@
           S.reconstructedText = data.reconstructed;
           S.summaryText = '';
           S.lastReconstructionMeta = meta;
-          modeAI.disabled = false;
           // Switch view to reconstruction.
           setActiveView('reconstruction');
         } else {
@@ -2162,9 +2106,6 @@
     urlInput.addEventListener('input', () => { S.url = urlInput.value; validateUrl(); });
     urlInput.addEventListener('keydown', e => { if (e.key === 'Enter' && validateUrl()) { S.url = urlInput.value; doFetch(); } });
     fetchBtn.addEventListener('click', () => { if (validateUrl()) { S.url = urlInput.value; doFetch(); } });
-
-    modeRaw.addEventListener('click', () => { if (!modeRaw.disabled) showRaw(); });
-    modeAI.addEventListener('click', () => { if (!modeAI.disabled) showReconstructed(); });
 
     viewTranscript.addEventListener('click', () => setActiveView('transcript'));
     viewReconstruction.addEventListener('click', () => setActiveView('reconstruction'));
