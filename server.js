@@ -57,7 +57,10 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
 
 const BUILD_INFO_PATH = path.join(__dirname, 'client', 'dist', 'build-info.json');
-const INDEX_HTML_PATH = path.join(__dirname, 'client', 'dist', 'index.html');
+// v3.4.0: serve single-file Rhea redesign from repo root (replaces React SPA
+// at client/dist/index.html). Server.js patch for /api/transform targetLang
+// is independent — see MERGE_BRIEF.md.
+const INDEX_HTML_PATH = path.join(__dirname, 'index.html');
 
 // TTS config (Piper). When PIPER_BIN does not exist the /api/tts endpoint
 // returns 503 with a clear message instead of crashing.
@@ -975,16 +978,28 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
 
   let systemPrompt = promptDef.system;
   if (mode === 'translate') {
-    systemPrompt +=
-      type === 'reconstruct'
-        ? '\nTranslate the entire output into Polish. Return Polish only.'
-        : '\nTranslate the entire summary into Polish. Return Polish only.';
+    const targetLang = req.body.targetLang || 'pl';
+    // defensive: only allow 'pl' | 'de' | 'en' (en = noop, fallback)
+    const allowed = ['pl', 'de', 'en'];
+    const lang = allowed.includes(targetLang) ? targetLang : 'pl';
+
+    if (lang !== 'en') {
+      const langName = lang === 'de' ? 'German' : 'Polish';
+      systemPrompt +=
+        type === 'reconstruct'
+          ? `\nTranslate the entire output into ${langName}. Return ${langName} only.`
+          : `\nTranslate the entire summary into ${langName}. Return ${langName} only.`;
+    }
   }
 
-  const translationSuffix =
-    mode === 'translate'
-      ? '\nOutput must be only in Polish. No English. No bilingual version. Preserve the same structure: one intro paragraph, then themed sections with bold headers and short paragraphs.'
-      : '';
+  const translationSuffix = (() => {
+    if (mode !== 'translate') return '';
+    const allowed = ['pl', 'de', 'en'];
+    const lang = allowed.includes(req.body.targetLang) ? req.body.targetLang : 'pl';
+    if (lang === 'en') return ''; // no-op translation
+    const langName = lang === 'de' ? 'German' : 'Polish';
+    return `\nOutput must be only in ${langName}. No other language. No bilingual version. Preserve the same structure: one intro paragraph, then themed sections with bold headers and short paragraphs.`;
+  })();
 
   const userPrompt = `${userPrefix}\n\n${rawText}\n\n${userSuffix}${translationSuffix}`;
 
@@ -1012,7 +1027,7 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
     }
 
     const responseKey = type === 'reconstruct' ? 'reconstructed' : 'summary';
-    const cacheKey = `${type}:${mode}:${hashKey(rawText)}`;
+    const cacheKey = `${type}:${mode}:${req.body.targetLang || 'pl'}:${hashKey(rawText)}`;
     setCache(cacheKey, { [responseKey]: output, snippetCount: snippets.length, model: result.model });
 
     res.json({
