@@ -7,7 +7,7 @@ export default function ReconstructedPanel({ text, lang }) {
   const [showSaveMenu, setShowSaveMenu] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const saveMenuRef = useRef(null);
-  const tts = useTTS({ text, lang: lang || 'pl' });
+  const tts = useTTS({ initialText: text, lang: lang || 'pl' });
 
   async function handleSpeak() {
     try {

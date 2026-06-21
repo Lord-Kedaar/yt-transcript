@@ -79,82 +79,6 @@ const TTS_VOICES = {
 const ttsCacheDir = '/tmp/tts-cache';
 fs.mkdirSync(ttsCacheDir, { recursive: true });
 
-// ─── TTS-prep LLM prompts (source: PIPER_TTS_PREP_PROMPT_SOURCE_EN_DE_PL.md) ──
-const TTS_PREP_SYSTEM_PROMPTS = {
-  en: `Prepare the text for natural English text-to-speech playback with Piper.
-
-Rules:
-- Preserve meaning, facts, names, order and tone.
-- Do not summarize, translate, expand the argument, add commentary or remove important content.
-- Improve spoken rhythm through punctuation, sentence splitting and paragraph breaks.
-- Expand dates, numbers, measurements, symbols and abbreviations into natural spoken English where helpful.
-- Make technical terms and acronyms easier to pronounce only when needed.
-- Do not add markdown, headings, tags, SSML, XML, stage directions or pronunciation notes.
-- Output only the final clean text that should be sent to Piper.`,
-
-  de: `Bereite den Text für eine natürliche deutsche Sprachausgabe mit Piper vor.
-
-Regeln:
-- Bedeutung, Fakten, Namen, Reihenfolge und Ton beibehalten.
-- Nicht zusammenfassen, nicht übersetzen, keine Argumente ergänzen, keine Kommentare hinzufügen und keine wichtigen Inhalte entfernen.
-- Den Sprechrhythmus durch Zeichensetzung, Satzteilung und Absatzstruktur verbessern.
-- Daten, Zahlen, Maßeinheiten, Symbole und Abkürzungen dort in natürliche gesprochene deutsche Formen umwandeln, wo es für die Aussprache hilft.
-- Auf Kasus, Genus, Numerus und Kongruenz achten, besonders bei Zahlen und Maßeinheiten.
-- Technische Begriffe und Akronyme nur dann sprechbarer machen, wenn Piper sie sonst wahrscheinlich schlecht liest.
-- Kein Markdown, keine Überschriften, keine Tags, kein SSML, kein XML, keine Regieanweisungen, keine Aussprache-Notizen.
-- Gib ausschließlich den finalen, sauberen Text aus, der direkt an Piper gesendet wird.`,
-
-  pl: `Przygotuj tekst do naturalnego odczytu po polsku przez Piper.
-
-Zasady:
-- Zachowaj sens, fakty, nazwy, kolejność i ton.
-- Nie streszczaj, nie tłumacz, nie rozwijaj argumentacji, nie dodawaj komentarzy i nie usuwaj ważnych treści.
-- Popraw rytm mowy przez interpunkcję, dzielenie zbyt długich zdań i sensowne akapity.
-- Daty, liczby, jednostki, symbole i skróty zamieniaj na naturalne formy mówione tam, gdzie pomaga to wymowie.
-- Pilnuj polskiej fleksji: przypadka, rodzaju, liczby i zgodności, szczególnie przy liczebnikach i jednostkach.
-- Terminy techniczne i akronimy upraszczaj fonetycznie tylko wtedy, gdy Piper prawdopodobnie przeczytałby je źle.
-- Nie dodawaj markdowna, nagłówków, tagów, SSML, XML, didaskaliów ani notatek wymowy.
-- Zwróć wyłącznie finalny czysty tekst, który ma zostać wysłany bezpośrednio do Piper.`,
-};
-
-function buildPiperPrepUserPrompt(text, sourceType, language) {
-  const langLabel = { en: 'English', de: 'German', pl: 'Polish' }[language] || language;
-  return `Prepare the following ytTranscript AI result for Piper TTS.
-
-Source type: ${sourceType}
-Language: ${langLabel}
-
-Rules:
-- Prepare only this ${sourceType === 'reconstruction' ? 'AI reconstruction' : 'Summary'} for spoken playback.
-- Do not summarize again.
-- Do not translate.
-- Do not add facts.
-- Do not output markdown.
-- Do not output SSML.
-- Do not output Fish Audio tags.
-- Do not output notes or explanations.
-- Return only plain Piper-ready text.
-
-Text:
-
-${text}`;
-}
-
-// Sentinels returned by the TTS-prep LLM that must not reach Piper
-const TTS_PREP_SENTINELS = ['PIPER_TTS_PREP_EMPTY_INPUT', 'PIPER_TTS_PREP_REJECTED_UNSUPPORTED_SOURCE_TYPE'];
-
-function isTtsPrepSentinel(value) {
-  return TTS_PREP_SENTINELS.includes(String(value).trim());
-}
-
-// Detect language from text sample — mirrors frontend auto-detect
-function detectLanguage(text) {
-  const sample = String(text || '').slice(0, 400);
-  if (/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/.test(sample)) return 'pl';
-  if (/[äöüßÄÖÜ]/.test(sample)) return 'de';
-  return 'en';
-}
-
 // ── Security: CORS (default: local dev, lock to env in production) ──────────
 const CORS_ORIGIN =
   process.env.CORS_ORIGIN ||
@@ -1219,6 +1143,13 @@ app.get('/', async (req, res) => {
 // Graceful degradation: if Piper binary is missing, /api/tts returns 503
 // with a clear hint instead of crashing the server. The frontend will
 // surface the error in the useTTS hook without breaking the UI.
+function detectLanguage(text) {
+  const sample = String(text || '').slice(0, 400);
+  if (/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/.test(sample)) return 'pl';
+  if (/[äöüßÄÖÜ]/.test(sample)) return 'de';
+  return 'en';
+}
+
 function stripMarkdownForTTS(text) {
   return String(text || '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
@@ -1276,23 +1207,9 @@ function ttsBodyGuard(req, _res, next) {
   next();
 }
 
-// Allowed audio-source types — only reconstruction and summary are permitted.
-// Raw transcript must NEVER reach the TTS pipeline.
-const ALLOWED_TTS_TYPES = new Set(['reconstruction', 'summary']);
-const SUPPORTED_TTS_LANGS = new Set(['en', 'de', 'pl']);
-
 app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
   noCache(res);
-  const { type, language, text } = req.body || {};
-
-  // 1. Validate type — reject raw transcript or any other value
-  if (!type || !ALLOWED_TTS_TYPES.has(type)) {
-    return res.status(400).json({
-      error: 'Invalid audio source. Use reconstruction or summary.',
-    });
-  }
-
-  // 2. Validate text
+  const { text, lang } = req.body || {};
   if (!text || typeof text !== 'string' || text.trim().length === 0) {
     return res.status(400).json({ error: 'Text is required and must be non-empty.' });
   }
@@ -1305,69 +1222,14 @@ app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
   }
 
   try {
-    // 3. Resolve language (use provided, or detect)
-    const resolvedLang = language && SUPPORTED_TTS_LANGS.has(language)
-      ? language
-      : (detectLanguage(text) || 'en');
-
-    if (!SUPPORTED_TTS_LANGS.has(resolvedLang)) {
-      return res.status(400).json({
-        error: 'Language not supported with audio function.',
-        hint: 'Supported languages: English, German, Polish.',
-      });
-    }
-
-    // 4. TTS-prep LLM — silently clean text for Piper
-    console.log(`[TTS] Preparing ${type} text (${text.length} chars) for Piper in ${resolvedLang}...`);
-    const llm = llmProvider();
-    const prepMessages = [
-      { role: 'system', content: TTS_PREP_SYSTEM_PROMPTS[resolvedLang] || TTS_PREP_SYSTEM_PROMPTS.en },
-      { role: 'user', content: buildPiperPrepUserPrompt(text, type, resolvedLang) },
-    ];
-    let preparedText;
-    try {
-      const prepResponse = await llm.chat(prepMessages, { timeoutMs: 60000, model: null });
-      preparedText = String(typeof prepResponse === 'string' ? prepResponse
-        : prepResponse?.content || prepResponse?.text || prepResponse?.output || '')
-        .trim();
-
-      // Guard: if LLM returned a sentinel, do not send to Piper
-      if (isTtsPrepSentinel(preparedText)) {
-        console.error(`[TTS] LLM returned sentinel "${preparedText}" — aborting Piper.`);
-        return res.status(422).json({
-          error: 'Audio preparation failed. The provided text could not be processed.',
-        });
-      }
-    } catch (prepErr) {
-      console.error('[TTS] LLM prep error:', prepErr.message);
-      // Fall back to stripped raw text rather than failing completely
-      preparedText = stripMarkdownForTTS(text);
-      console.warn('[TTS] Falling back to stripped raw text for Piper.');
-    }
-
-    console.log(`[TTS] Prep done (${preparedText.length} chars) — synthesizing...`);
-
-    // 5. Cache key: reuse existing audio for identical input
-    const textHash = crypto.createHash('sha256').update(`${type}:${resolvedLang}:${preparedText}`).digest('hex').slice(0, 16);
-    const id = `${resolvedLang}-${type}-${textHash}`;
+    const detectedLang = lang && TTS_VOICES[lang] ? lang : detectLanguage(text);
+    const id = `${detectedLang}-${crypto.randomBytes(8).toString('hex')}`;
     const outPath = path.join(ttsCacheDir, `${id}.wav`);
-
-    let audioUrl;
-    if (fs.existsSync(outPath)) {
-      // Cache hit — reuse existing file
-      audioUrl = `/api/audio/${id}.wav`;
-      console.log(`[TTS] Cache hit for ${id}`);
-    } else {
-      // 6. Piper synthesis
-      await generateTTS(preparedText, resolvedLang, outPath);
-      audioUrl = `/api/audio/${id}.wav`;
-      console.log(`[TTS] Synthesized ${id} (${preparedText.length} chars) → ${audioUrl}`);
-    }
-
-    res.json({ audioUrl, durationMs: null, language: resolvedLang });
+    await generateTTS(stripMarkdownForTTS(text), detectedLang, outPath);
+    res.json({ audioUrl: `/api/audio/${id}.wav`, lang: detectedLang });
   } catch (err) {
     console.error('TTS error:', err.message);
-    res.status(500).json({ error: `Audio generation failed: ${err.message}` });
+    res.status(500).json({ error: `TTS generation failed: ${err.message}` });
   }
 });
 

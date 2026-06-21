@@ -743,59 +743,11 @@
       font-size: 0.82rem;
     }
 
-    /* ===== TTS READ ALOUD INLINE CONTROLS ===== */
-    .tts-inline-bar {
-      display: none;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1rem;
-      border-top: 1px solid var(--border);
-      font-size: 0.72rem;
-      color: var(--muted-2);
-      flex-wrap: wrap;
-    }
-    .tts-inline-bar.visible { display: flex; }
-    .tts-inline-bar .tts-lang-group {
-      display: flex;
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      overflow: hidden;
-    }
-    .tts-inline-bar .tts-lang-btn {
-      height: 26px;
-      padding: 0 0.5rem;
-      background: var(--surface-2);
-      border: none;
-      border-right: 1px solid var(--border);
-      color: var(--muted-2);
-      font-size: 0.7rem;
-      font-weight: 510;
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
-    }
-    .tts-inline-bar .tts-lang-btn:last-child { border-right: none; }
-    .tts-inline-bar .tts-lang-btn:hover { background: var(--border); color: var(--muted); }
-    .tts-inline-bar .tts-lang-btn.active { background: var(--primary); color: #fff; }
-    .tts-inline-bar .tts-status {
-      flex: 1;
-      font-size: 0.7rem;
-      color: var(--muted-2);
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .tts-inline-bar audio {
-      height: 28px;
-      flex: 1;
-      min-width: 120px;
-      accent-color: var(--primary);
-    }
-    .tts-inline-bar .tts-error {
-      color: var(--danger, #ef4444);
-      font-size: 0.7rem;
-    }
-
-    /* ===== COLLAPSIBLE (legacy — kept for other collapsibles) ===== */
+    /* ===== COLLAPSIBLE (TTS) ===== */
+    /* Brief §4: TTS/Read aloud UI removed from active flow for v3.4.1.
+       The element stays in DOM but is permanently hidden so the server-side
+       /api/tts route remains available for the future Piper run. */
+    #ttsCollapsible { display: none !important; }
     .collapsible {
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
@@ -1361,6 +1313,8 @@
               </button>
             </div>
           </div>
+          <!-- Brief §4: Read aloud button removed from Transcript toolbar.
+               TTS/Piper integration is out of scope for v3.4.1 (separate run). -->
         </div>
         <div class="reset-row">
           <button class="btn btn-ghost" id="resetBtn" type="button" style="font-size:0.78rem;height:32px;padding:0 0.625rem;">
@@ -1393,12 +1347,6 @@
           <span class="badge badge-muted" id="langBadge">—</span>
           <span class="badge badge-muted" id="charBadge">—</span>
           <span class="badge badge-accent" id="reconstructionMetaBadge" style="display:none"></span>
-          <button class="icon-btn tts-read-btn" id="ttsReconstructBtn" type="button" aria-label="Read aloud AI reconstruction" title="Read aloud" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path d="M11 5L6 9H2v6h4l5 4V5z"/>
-              <path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
-            </svg>
-          </button>
         </div>
       </div>
 
@@ -1412,18 +1360,6 @@
         <span id="aiProgressText"></span>
       </div>
 
-      <!-- TTS inline bar for AI Reconstruction -->
-      <div class="tts-inline-bar" id="ttsReconstructBar">
-        <div class="tts-lang-group" role="group" aria-label="TTS language">
-          <button class="tts-lang-btn active" data-lang="pl" type="button">pl</button>
-          <button class="tts-lang-btn" data-lang="en" type="button">en</button>
-          <button class="tts-lang-btn" data-lang="de" type="button">de</button>
-        </div>
-        <button class="btn btn-secondary" id="ttsReconstructGenerateBtn" type="button" style="height:26px;font-size:0.7rem;padding:0 0.625rem;">Generate audio</button>
-        <audio id="ttsReconstructAudio" controls style="display:none;height:28px;flex:1;min-width:120px;accent-color:var(--primary);"></audio>
-        <a class="btn btn-ghost" id="ttsReconstructDownloadBtn" type="button" download style="display:none;height:26px;font-size:0.7rem;padding:0 0.625rem;text-decoration:none;">Download WAV</a>
-        <span class="tts-status" id="ttsReconstructStatus"></span>
-      </div>
     </section>
 
     <!-- SUMMARY CARD -->
@@ -1446,12 +1382,6 @@
               <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
             </svg>
           </button>
-          <button class="icon-btn tts-read-btn" id="ttsSummaryBtn" type="button" aria-label="Read aloud AI summary" title="Read aloud" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path d="M11 5L6 9H2v6h4l5 4V5z"/>
-              <path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
-            </svg>
-          </button>
         </div>
       </div>
       <div class="summary-body prose" id="summaryBody">
@@ -1460,22 +1390,48 @@
       <div class="panel-footer" id="summaryFooter" style="display:none">
         <span id="summaryCharCount">—</span>
       </div>
-
-      <!-- TTS inline bar for AI Summary -->
-      <div class="tts-inline-bar" id="ttsSummaryBar">
-        <div class="tts-lang-group" role="group" aria-label="TTS language">
-          <button class="tts-lang-btn active" data-lang="pl" type="button">pl</button>
-          <button class="tts-lang-btn" data-lang="en" type="button">en</button>
-          <button class="tts-lang-btn" data-lang="de" type="button">de</button>
-        </div>
-        <button class="btn btn-secondary" id="ttsSummaryGenerateBtn" type="button" style="height:26px;font-size:0.7rem;padding:0 0.625rem;">Generate audio</button>
-        <audio id="ttsSummaryAudio" controls style="display:none;height:28px;flex:1;min-width:120px;accent-color:var(--primary);"></audio>
-        <a class="btn btn-ghost" id="ttsSummaryDownloadBtn" type="button" download style="display:none;height:26px;font-size:0.7rem;padding:0 0.625rem;text-decoration:none;">Download WAV</a>
-        <span class="tts-status" id="ttsSummaryStatus"></span>
-      </div>
     </section>
 
-    <!-- TTS INLINE PLAYER (injected dynamically inside transcriptCard / summaryCard) -->
+    <!-- TTS COLLAPSIBLE -->
+    <details class="collapsible" id="ttsCollapsible" style="display:none">
+      <summary class="collapsible-trigger" id="ttsTrigger" aria-label="Read aloud">
+        <span class="collapsible-trigger-left">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+            <path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
+          </svg>
+          Read aloud
+        </span>
+        <svg class="collapsible-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </summary>
+      <div class="collapsible-content">
+        <div id="ttsPiperAlert" class="alert alert-warning" style="margin:0.875rem 1rem 0;" role="alert">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          Read-aloud requires local Piper. Set <code>PIPER_BIN</code> and <code>PIPER_MODELS_DIR</code> in your <code>.env</code>. See the documentation for details.
+        </div>
+        <div class="tts-controls">
+          <div class="tts-lang-group" role="group" aria-label="TTS language">
+            <button class="tts-lang-btn active" data-lang="pl" type="button">pl</button>
+            <button class="tts-lang-btn" data-lang="en" type="button">en</button>
+            <button class="tts-lang-btn" data-lang="de" type="button">de</button>
+          </div>
+          <button class="btn btn-secondary" id="ttsGenerateBtn" type="button" style="height:32px;font-size:0.78rem;padding:0 0.75rem;">
+            Generate audio
+          </button>
+          <button class="btn btn-ghost" id="ttsDownloadBtn" type="button" style="height:32px;font-size:0.78rem;padding:0 0.75rem;display:none;">
+            Download WAV
+          </button>
+        </div>
+        <div class="tts-audio-wrap" id="ttsAudioWrap" style="display:none">
+          <audio class="tts-audio" id="ttsAudio" controls></audio>
+        </div>
+      </div>
+    </details>
 
   </main>
 
@@ -1563,8 +1519,7 @@
     const toolbarShell  = $('toolbarShell');
     const transcriptCard= $('transcriptCard');
     const summaryCard   = $('summaryCard');
-    const ttsReconstructBar = $('ttsReconstructBar');
-    const ttsSummaryBar    = $('ttsSummaryBar');
+    const ttsCollapsible= $('ttsCollapsible');
     const viewSwitcher  = $('viewSwitcher');
     const viewTranscript= $('viewTranscript');
     const viewReconstruction= $('viewReconstruction');
@@ -1587,8 +1542,7 @@
     const summaryFooter = $('summaryFooter');
     const summaryCharCount = $('summaryCharCount');
     const copySummaryBtn= $('copySummaryBtn');
-    const ttsReconstructBtn = $('ttsReconstructBtn');
-    const ttsSummaryBtn    = $('ttsSummaryBtn');
+    const ttsLangBtns   = document.querySelectorAll('.tts-lang-btn');
     const providerRing  = $('providerRing');
     const providerLabel = $('providerLabel');
     const providerBadge = $('providerBadge');
@@ -1652,8 +1606,7 @@
       viewSwitcher.style.display = 'none';
       transcriptCard.style.display = 'none';
       summaryCard.style.display = 'none';
-      ttsReconstructBar.classList.remove('visible');
-      ttsSummaryBar.classList.remove('visible');
+      ttsCollapsible.style.display = 'none';
       viewSwitcher.style.display = 'none';
       summaryMetaBadge.style.display = 'none';
       reconstructionMetaBadge.style.display = 'none';
@@ -1697,11 +1650,6 @@
     function renderActiveView() {
       // Brief §3 / §16: ONE main content panel. Hide inactive card.
       const v = S.activeView;
-
-      // TTS bar visibility: shown only for the active view
-      ttsReconstructBar.classList.remove('visible');
-      ttsSummaryBar.classList.remove('visible');
-
       if (v === 'summary') {
         // Summary owns the panel
         transcriptCard.style.display = 'none';
@@ -1710,10 +1658,6 @@
         summaryCard.style.display = 'block';
         summaryCard.removeAttribute('aria-hidden');
         summaryCard.removeAttribute('inert');
-        if (S.summaryText) {
-          ttsSummaryBar.classList.add('visible');
-          ttsSummaryBtn.style.display = '';
-        }
       } else {
         // transcript | reconstruction share transcriptCard; summaryCard hidden
         summaryCard.style.display = 'none';
@@ -1722,15 +1666,13 @@
         transcriptCard.style.display = 'block';
         transcriptCard.removeAttribute('aria-hidden');
         transcriptCard.removeAttribute('inert');
-        if (v === 'reconstruction' && S.reconstructedText) {
-          showReconstructed();
-          ttsReconstructBar.classList.add('visible');
-          ttsReconstructBtn.style.display = '';
+        if (v === 'reconstruction') {
+          // make sure reconstructed body is showing inside transcriptCard
+          if (S.reconstructedText) showReconstructed();
         } else {
           showRaw();
         }
       }
-      if (v !== 'reconstruction') ttsReconstructBtn.style.display = 'none';
     }
 
     /* RENDER: TRANSCRIPT CARD */
@@ -2144,71 +2086,15 @@
       dialogAction = null;
     }
 
-    /* TTS LANG (per-bar) */
-    // Per-bar state
-    const ttsBars = {
-      reconstruct: { lang: 'pl', bar: ttsReconstructBar, audio: $('ttsReconstructAudio'),
-        generateBtn: $('ttsReconstructGenerateBtn'), downloadBtn: $('ttsReconstructDownloadBtn'),
-        status: $('ttsReconstructStatus'), langBtns: ttsReconstructBar.querySelectorAll('.tts-lang-btn') },
-      summary:    { lang: 'pl', bar: ttsSummaryBar,    audio: $('ttsSummaryAudio'),
-        generateBtn: $('ttsSummaryGenerateBtn'), downloadBtn: $('ttsSummaryDownloadBtn'),
-        status: $('ttsSummaryStatus'),    langBtns: ttsSummaryBar.querySelectorAll('.tts-lang-btn') },
-    };
-
-    function attachTtsBarHandlers(type) {
-      const b = ttsBars[type];
-      b.langBtns.forEach(btn => {
-        btn.addEventListener('click', () => {
-          b.langBtns.forEach(x => x.classList.remove('active'));
-          btn.classList.add('active');
-          b.lang = btn.dataset.lang;
-        });
+    /* TTS LANG */
+    let ttsLang = 'pl';
+    ttsLangBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        ttsLangBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        ttsLang = btn.dataset.lang;
       });
-      b.generateBtn.addEventListener('click', () => doTtsGenerate(type));
-    }
-    attachTtsBarHandlers('reconstruct');
-    attachTtsBarHandlers('summary');
-
-    async function doTtsGenerate(type) {
-      const b = ttsBars[type];
-      const text = type === 'reconstruct' ? S.reconstructedText : S.summaryText;
-      if (!text) { b.status.textContent = 'No text available.'; return; }
-
-      b.generateBtn.disabled = true;
-      b.generateBtn.textContent = 'Generating…';
-      b.audio.style.display = 'none';
-      b.downloadBtn.style.display = 'none';
-      b.status.textContent = 'Preparing audio…';
-      b.status.classList.remove('tts-error');
-
-      try {
-        const res = await fetch('/api/tts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ type, language: b.lang, text }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Generation failed.');
-        const audioUrl = data.audioUrl;
-        b.audio.src = audioUrl;
-        b.audio.style.display = '';
-        const aUrl = new URL(audioUrl, window.location.origin);
-        b.downloadBtn.href = aUrl;
-        b.downloadBtn.download = '';
-        b.downloadBtn.style.display = '';
-        b.status.textContent = `Ready · ${data.language?.toUpperCase()}`;
-        b.audio.onloadedmetadata = () => {
-          const secs = b.audio.duration;
-          if (secs > 0) b.status.textContent = `${data.language?.toUpperCase()} · ${Math.round(secs)}s`;
-        };
-      } catch (err) {
-        b.status.textContent = err.message;
-        b.status.classList.add('tts-error');
-      } finally {
-        b.generateBtn.disabled = false;
-        b.generateBtn.textContent = 'Generate audio';
-      }
-    }
+    });
 
     /* EVENTS */
     /* URL validation → enable fetch button only when valid */
@@ -2254,6 +2140,10 @@
 
     copySummaryBtn.addEventListener('click', () => copyText(S.summaryText));
 
+    // Brief §4: Read aloud button removed from Transcript toolbar (v3.4.1).
+    // TTS listeners (ttsToggleBtn, ttsTrigger) are intentionally omitted;
+    // /api/tts endpoint stays available for the future Piper run.
+
     resetBtn.addEventListener('click', () => {
       S.url = '';
       S.transcriptData = null;
@@ -2280,6 +2170,8 @@
         if (langDialog.classList.contains('open')) trapFocus(e, langDialog);
       }
     });
+
+    $('ttsTrigger'); // element kept in DOM but hidden via CSS; no listener (Read aloud is out of scope v3.4.1).
 
     /* AI STATUS STATE MACHINE (brief §8–§14)
        4 states: 'checking' | 'online' | 'partial' | 'offline'.

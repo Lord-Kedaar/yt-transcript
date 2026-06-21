@@ -7,6 +7,7 @@ import ReconstructedPanel from './components/ReconstructedPanel';
 import SummaryPanel from './components/SummaryPanel';
 import ExportButtons from './components/ExportButtons';
 import { BUILD_INFO } from './buildInfo.js';
+import { useTTS } from './hooks/useTTS.js';
 
 const API_URL = '/api/transcript';
 const TRANSFORM_URL = '/api/transform';
@@ -87,6 +88,15 @@ export default function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalAction, setModalAction] = useState(null); // 'reconstruct' | 'summarize'
   const [currentLang, setCurrentLang] = useState(''); // 'translate' => pl, '' => en
+  const [isReadingRaw, setIsReadingRaw] = useState(false);
+  const rawTts = useTTS({ text: '', lang: 'en' });
+
+  // Keep rawTTS text in sync with transcriptData
+  useEffect(() => {
+    if (transcriptData) {
+      rawTts.text = transcriptData.snippets.map(s => s.text).join(' ');
+    }
+  }, [transcriptData]);
 
   const timerRef = useRef(null);
   const aiAbortRef = useRef(null);
@@ -254,10 +264,12 @@ export default function App() {
   }
 
   async function handleModalChoice(mode) {
+    // Capture modalAction before closeModal() resets it
+    const action = modalAction;
     closeModal();
-    if (!modalAction) return;
+    if (!action) return;
     setCurrentLang(mode === 'translate' ? 'pl' : 'en');
-    await handleTransform(modalAction, mode);
+    await handleTransform(action, mode);
   }
 
   async function handleTransform(
@@ -403,11 +415,24 @@ export default function App() {
     setReconstructedText('');
     setSummaryText('');
     setAiProgress('');
+    setIsReadingRaw(false);
     clearUiState();
   }
 
-  const isReconstructing = aiLoading && modalAction === 'reconstruct';
-  const isSummarizing = aiLoading && modalAction === 'summarize';
+  async function handleReadRaw() {
+    if (!rawTts.text) return;
+    setIsReadingRaw(true);
+    try {
+      await rawTts.speak();
+    } catch (e) {
+      console.error('Read aloud error:', e);
+    } finally {
+      setIsReadingRaw(false);
+    }
+  }
+
+  const isReconstructing = aiLoading && pendingTransformRef.current?.type === 'reconstruct';
+  const isSummarizing = aiLoading && pendingTransformRef.current?.type === 'summarize';
 
   return (
     <div className="app-container">
@@ -439,76 +464,106 @@ export default function App() {
               <h2>{transcriptData.title}</h2>
             </div>
 
-            <div className="action-buttons">
-              <button
-                className="reconstruct-button"
-                onClick={() => openModal('reconstruct')}
-                disabled={aiLoading}
-              >
-                {isReconstructing ? (
-                  <>
-                    <span className="spinner-sm"></span>
-                    Reconstructing...
-                  </>
-                ) : (
-                  <>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 2v4m0 12v4m-7.05-13.95l2.83 2.83m8.84 8.84l2.83 2.83M2 12h4m12 0h4M4.22 4.22l2.83 2.83m8.84 8.84l2.83 2.83" />
-                    </svg>
-                    Reconstruct with AI
-                  </>
-                )}
-              </button>
-              <button
-                className="summarize-button"
-                onClick={() => openModal('summarize')}
-                disabled={aiLoading}
-              >
-                {isSummarizing ? (
-                  <>
-                    <span className="spinner-sm"></span>
-                    Summarizing...
-                  </>
-                ) : (
-                  <>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <polyline points="14 2 14 8 20 8" />
-                      <line x1="16" y1="13" x2="8" y2="13" />
-                      <line x1="16" y1="17" x2="8" y2="17" />
-                      <polyline points="10 9 9 9 8 9" />
-                    </svg>
-                    Summarize with AI
-                  </>
-                )}
-              </button>
-            </div>
-
-            {aiProgress && (
-              <div className="reconstruct-progress" aria-live="polite">
-                <div className="reconstruct-progress-text">
-                  <span className="reconstruct-progress-badge" />
-                  <span>{aiProgress}</span>
-                  <span className="reconstruct-progress-dots" aria-hidden="true">
-                    <span />
-                    <span />
-                    <span />
-                  </span>
-                </div>
-                <div className="reconstruct-progress-track" aria-hidden="true">
-                  <div className="reconstruct-progress-fill" />
-                </div>
+            {/* Transcript card — actions above content */}
+            <div className="transcript-card">
+              <div className="transcript-card-header">
+                <h3>Transcript</h3>
+                <span className="transcript-meta">
+                  {transcriptData.snippets.length} segments ·{' '}
+                  {transcriptData.snippets
+                    .map(s => s.text)
+                    .join(' ')
+                    .length.toLocaleString()}{' '}
+                  chars
+                </span>
               </div>
-            )}
+
+              {/* Action bar above transcript content */}
+              <div className="transcript-action-bar">
+                <button
+                  className="action-btn action-btn-ai"
+                  onClick={() => openModal('reconstruct')}
+                  disabled={aiLoading}
+                >
+                  {isReconstructing ? (
+                    <>
+                      <span className="spinner-sm" />
+                      Reconstructing…
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M12 2v4m0 12v4m-7.05-13.95l2.83 2.83m8.84 8.84l2.83 2.83M2 12h4m12 0h4M4.22 4.22l2.83 2.83m8.84 8.84l2.83 2.83" />
+                      </svg>
+                      Reconstruct with AI
+                    </>
+                  )}
+                </button>
+                <button
+                  className="action-btn action-btn-ai"
+                  onClick={() => openModal('summarize')}
+                  disabled={aiLoading}
+                >
+                  {isSummarizing ? (
+                    <>
+                      <span className="spinner-sm" />
+                      Summarizing…
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                        <line x1="16" y1="13" x2="8" y2="13" />
+                        <line x1="16" y1="17" x2="8" y2="17" />
+                      </svg>
+                      Summarize with AI
+                    </>
+                  )}
+                </button>
+                <button className="action-btn" onClick={handleReadRaw} disabled={isReadingRaw}>
+                  {isReadingRaw ? (
+                    <>
+                      <span className="spinner-sm" />
+                      Playing…
+                    </>
+                  ) : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M11 5L6 9H2v6h4l5 4V5z" />
+                        <path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07" />
+                      </svg>
+                      Read aloud
+                    </>
+                  )}
+                </button>
+                <ExportButtons snippets={transcriptData.snippets} />
+              </div>
+
+              {aiProgress && (
+                <div className="reconstruct-progress" aria-live="polite">
+                  <div className="reconstruct-progress-text">
+                    <span className="reconstruct-progress-badge" />
+                    <span>{aiProgress}</span>
+                    <span className="reconstruct-progress-dots" aria-hidden="true">
+                      <span />
+                      <span />
+                      <span />
+                    </span>
+                  </div>
+                  <div className="reconstruct-progress-track" aria-hidden="true">
+                    <div className="reconstruct-progress-fill" />
+                  </div>
+                </div>
+              )}
+
+              <TranscriptPanel snippets={transcriptData.snippets} />
+            </div>
 
             {reconstructedText && (
               <ReconstructedPanel text={reconstructedText} lang={currentLang} />
             )}
             {summaryText && <SummaryPanel text={summaryText} lang={currentLang} />}
-
-            <ExportButtons snippets={transcriptData.snippets} />
-
-            <TranscriptPanel snippets={transcriptData.snippets} title="Raw Segments" />
           </>
         )}
 

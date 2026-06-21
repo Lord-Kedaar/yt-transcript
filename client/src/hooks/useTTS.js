@@ -1,8 +1,24 @@
-export function useTTS({ text, lang }) {
+export function useTTS({ initialText = '', lang = 'en' }) {
   let currentAudio = null;
+  let _text = initialText;
+  let _lang = lang;
 
   return {
+    get text() {
+      return _text;
+    },
+    set text(value) {
+      _text = value;
+    },
+    get lang() {
+      return _lang;
+    },
+    set lang(value) {
+      _lang = value;
+    },
     async speak() {
+      const text = _text;
+      const lang = _lang;
       if (!text || typeof text !== 'string' || text.trim().length === 0) {
         console.warn('TTS: no text');
         return;

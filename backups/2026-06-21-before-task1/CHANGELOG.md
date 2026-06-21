@@ -1,38 +1,5 @@
 # Changelog
 
-## 3.4.6 — 2026-06-21
-
-### Added
-
-- **Piper TTS with TTS-prep LLM** — `/api/tts` now accepts `{ type, language, text }` where `type` must be `'reconstruction'` or `'summary'` (raw transcript explicitly rejected). Text is first processed by a language-specific TTS-prep LLM prompt (EN/DE/PL) to improve Piper readability, then synthesized. On LLM prep failure the endpoint falls back to stripped raw text.
-- **Read aloud inline UI** — each card (AI Reconstruction, AI Summary) now has a per-bar TTS control with language selector (pl/en/de), Generate audio button, inline audio player, and Download WAV link. Bars appear/hide correctly on view switches.
-- **TTS-prep prompts** — three system prompts (EN/DE/PL) sourced from `PIPER_TTS_PREP_PROMPT_SOURCE_EN_DE_PL.md`: no-summarize, no-translate, expand abbreviations, fix sentence rhythm, preserve meaning/facts/names/order/tone.
-- **TTS caching** — audio files cached at `/tmp/tts-cache/{lang}-{type}-{sha256}.wav`; cache hit returns existing file without re-synthesis.
-- **24h TTS cache cleanup** on server startup.
-
-### Fixed
-
-- **TTS bar visibility leak** — summary TTS bar no longer leaks across view switches. Bar visibility is now managed exclusively in `renderActiveView()`.
-
-### Security
-
-- `ALLOWED_TTS_TYPES` allowlist (O(1)) blocks raw transcript at route level.
-- `SUPPORTED_TTS_LANGS` allowlist for language validation.
-- `ttsBodyGuard` enforces 50,000 char body limit.
-- `timeoutMs: 60000` on TTS-prep LLM call prevents worker blocking.
-- `/api/audio/:id` path-traversal guard unchanged.
-
-### Codex Review
-
-- Security, correctness, error handling, performance: approved by Codex CLI review.
-
-### Tested
-
-- `node --check server.js` → OK.
-- `curl POST /api/tts {type:"raw"}` → 400 with error message.
-- `curl POST /api/tts {type:"reconstruction"}` → 503 Piper absent (correct graceful degradation).
-- View switch: Transcript → AI Reconstruction → AI Summary → Transcript: TTS bars shown/hidden correctly.
-
 ## 3.4.5 — 2026-06-21
 
 ### Fixed

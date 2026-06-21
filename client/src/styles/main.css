@@ -9,6 +9,9 @@
   --accent-primary: #6366f1;
   --accent-hover: #818cf8;
   --accent-glow: rgba(99, 102, 241, 0.3);
+  --ai-lime: #a3e635;
+  --ai-lime-soft: rgba(163, 230, 53, 0.12);
+  --ai-lime-border: rgba(163, 230, 53, 0.35);
   --border-color: #334155;
   --success: #22c55e;
   --error: #ef4444;
@@ -290,34 +293,110 @@ body {
   height: 14px;
 }
 
-/* ===== Transcript Panel ===== */
-.transcript-container {
-  animation: fadeIn 0.4s ease 0.2s both;
+/* ===== Transcript Card (container) ===== */
+.transcript-card {
+  margin-bottom: 1.25rem;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
 }
 
-.transcript-header {
+.transcript-card-header {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
-  margin-bottom: 0.75rem;
+  padding: 1rem 1.25rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
 }
 
-.transcript-header h3 {
+.transcript-card-header h3 {
   font-size: 1rem;
   font-weight: 600;
 }
 
-.snippet-count {
-  font-size: 0.8rem;
+.transcript-meta {
+  font-size: 0.78rem;
   color: var(--text-muted);
+}
+
+/* ===== Action Bar (above transcript content) ===== */
+.transcript-action-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* ===== Action Button (general) ===== */
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
+  white-space: nowrap;
+}
+
+.action-btn:hover:not(:disabled) {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  transform: translateY(-1px);
+}
+
+.action-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.action-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+/* ===== AI Action Button (lime) ===== */
+.action-btn-ai {
+  background: var(--ai-lime-soft);
+  border-color: var(--ai-lime-border);
+  color: var(--ai-lime);
+  font-weight: 600;
+}
+
+.action-btn-ai:hover:not(:disabled) {
+  background: var(--ai-lime);
+  border-color: var(--ai-lime);
+  color: #0f172a;
+  box-shadow: 0 0 12px rgba(163, 230, 53, 0.25);
+}
+
+.action-btn-ai:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ===== Transcript Panel (inner scroll area) ===== */
+.transcript-container {
+  /* animation: fadeIn 0.4s ease 0.2s both; */
 }
 
 .transcript-panel {
   max-height: 500px;
   overflow-y: auto;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
   scroll-behavior: smooth;
 }
 
@@ -384,15 +463,6 @@ body {
   color: var(--accent-hover);
 }
 
-/* ===== Footer ===== */
-.app-footer {
-  text-align: center;
-  padding: 1.5rem;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  border-top: 1px solid var(--border-color);
-}
-
 /* ===== Responsive ===== */
 @media (max-width: 640px) {
   .url-form {
@@ -403,16 +473,17 @@ body {
     justify-content: center;
   }
 
-  .action-buttons {
-    grid-template-columns: 1fr;
+  .transcript-action-bar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .reconstruct-button,
-  .summarize-button {
-    font-size: 0.75rem;
-    white-space: nowrap;
-    min-width: 0;
-    overflow: hidden;
+  .action-btn,
+  .action-btn-ai {
+    justify-content: center;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 0.875rem;
   }
 
   .video-info h2 {
@@ -438,6 +509,20 @@ body {
   .main-content {
     padding: 1.5rem 1rem;
   }
+}
+
+/* ===== Transcript Panel (standalone container) ===== */
+.transcript-container {
+  /* inherits from .transcript-card now */
+}
+
+/* ===== Footer ===== */
+.app-footer {
+  text-align: center;
+  padding: 1.5rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  border-top: 1px solid var(--border-color);
 }
 
 /* ===== Animations for transcript segments ===== */
