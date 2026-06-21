@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.4.8 — 2026-06-21
+
+### Fixed
+
+- **`index.html:799` — Demo modal broken in Chromium/Linux** — `backdrop-filter: blur(4px)` caused rendering/compositing issues on Chromium/Linux (content cramped, wrong spacing). Fixed: moved `backdrop-filter` behind `@supports (backdrop-filter: blur(4px))` feature query so it only applies in browsers that handle it correctly. Also added `overflow-y: auto` to `#demoPopup` to prevent content overflow on small viewports.
+
 ## 3.4.7 — 2026-06-21
 
 ### Fixed

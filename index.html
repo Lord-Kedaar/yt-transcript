@@ -800,13 +800,18 @@
       position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.6);
-      backdrop-filter: blur(4px);
-      -webkit-backdrop-filter: blur(4px);
       z-index: 300;
       display: none;
       align-items: center;
       justify-content: center;
       padding: 1rem;
+      overflow-y: auto;
+    }
+    @supports (backdrop-filter: blur(4px)) {
+      #demoPopup {
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+      }
     }
     #demoPopup.open { display: flex; }
     .demo-popup {
