@@ -2174,7 +2174,9 @@
           if (res.status === 429) {
             throw new Error(data.message || data.error || 'Daily demo limit reached.');
           }
-          throw new Error(data.error || 'Model returned an error.');
+          // Distinguish LLM provider errors from transcript fetch errors
+          const providerMsg = data?.error || data?.message || `LLM provider error (HTTP ${res.status}).`;
+          throw new Error(providerMsg);
         }
         // Capture metadata for badge (brief §17). elapsedMs from server is
         // authoritative (server measures around the chat call); client startAt

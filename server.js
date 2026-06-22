@@ -285,7 +285,7 @@ const TRANSCRIPT_MISSING_PATTERNS = [
   'subtitles',
   'subtitle',
 ];
-const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 
 app.disable('x-powered-by');
 app.use(cors({ origin: CORS_ORIGIN }));
@@ -331,17 +331,19 @@ function isRetryableError(err) {
   }
 
   const message = getErrorMessage(err).toLowerCase();
+  // NOTE: do NOT match generic 'network' or 'fetch failed' — those appear in
+  // withRetry wrapper messages (e.g. "Groq chat failed...retrying...network")
+  // and cause false-positive retry loops. Real network errors from fetch() are
+  // distinguishable by their cause: AbortError (timeout), ECONNRESET, ETIMEDOUT.
   return (
     message.includes('aborterror') ||
     message.includes('timed out') ||
     message.includes('timeout') ||
-    message.includes('fetch failed') ||
     message.includes('econnreset') ||
     message.includes('connection reset') ||
     message.includes('eai_again') ||
     message.includes('etimedout') ||
     message.includes('socket hang up') ||
-    message.includes('network') ||
     message.includes('headers-timeout') ||
     message.includes('headers timeout')
   );
@@ -675,7 +677,7 @@ function buildMistralProvider() {
     async chat(messages, { timeoutMs = 120000, retryOpts = {} } = {}) {
       const data = await withRetry(
         () =>
-          fetchJsonOnce(`${MISTRAL_URL}/chat/completions`, {
+          fetchJsonOnce(`${MISTRAL_URL}/v1/chat/completions`, {
             method: 'POST',
             timeoutMs,
             headers: {
@@ -690,7 +692,7 @@ function buildMistralProvider() {
               max_tokens: 8192,
             }),
           }),
-        { attempts: 2, baseDelayMs: 1200, label: 'Mistral chat', ...retryOpts },
+        { attempts: 2, baseDelayMs: 1200, label: `Mistral chat (${MISTRAL_MODEL})`, ...retryOpts },
       );
       return {
         content: data?.choices?.[0]?.message?.content ?? '',
