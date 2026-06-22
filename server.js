@@ -677,7 +677,7 @@ function buildMistralProvider() {
     async chat(messages, { timeoutMs = 120000, retryOpts = {} } = {}) {
       const data = await withRetry(
         () =>
-          fetchJsonOnce(`${MISTRAL_URL}/v1/chat/completions`, {
+          fetchJsonOnce(`${MISTRAL_URL}/chat/completions`, {
             method: 'POST',
             timeoutMs,
             headers: {

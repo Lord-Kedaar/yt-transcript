@@ -8,8 +8,7 @@
 - `isRetryableError` matched `'network'` and `'fetch failed'` in the `withRetry` wrapper
   message (`"Groq chat failed...retrying...network"`) → second attempt on a non-retryable
   error → finally threw `"fetch failed"` as the error message to UI.
-- Mistral endpoint was `/chat/completions` instead of `/v1/chat/completions` (would have
-  failed anyway since MISTRAL_API_KEY is empty on Lenovo).
+- Mistral endpoint was `/chat/completions` with MISTRAL_URL including `/v1` → correctly resolves to `https://api.mistral.ai/v1/chat/completions`. Original code was correct; no functional change.
 - `LLM_PROVIDER_FALLBACK=` was empty on Lenovo → no fallback chain at all.
 
 ### Fixes applied
