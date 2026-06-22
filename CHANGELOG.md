@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.4.9 — 2026-06-22
+
+### Fixed
+
+- **`server.js:288` — 529 not retryable** — `Groq chat failed: meta-llama/llama-4-scout-17b-16e-instruct is currently over capacity` returned HTTP 529, which was not in `RETRYABLE_STATUS_CODES`. Retry loop was skipped, fallback never tried. Added 529 to the retryable set.
+- **`server.js:333-346` — isRetryableError false-positive on wrapper messages** — `isRetryableError` matched `'network'` and `'fetch failed'` in `withRetry` wrapper messages (e.g. `"Groq chat failed...retrying...network"`). This caused second-attempt retries on errors whose underlying cause was HTTP 529/500 (non-retryable), producing a confusing `"fetch failed"` UI message instead of the real cause. Removed `'network'` and `'fetch failed'` from the pattern match; real fetch network errors are distinguishable by their underlying cause (AbortError, ECONNRESET, ETIMEDOUT).
+- **`server.js:678` — Mistral wrong endpoint path** — `buildMistralProvider()` called `${MISTRAL_URL}/chat/completions` which resolves to `https://api.mistral.ai/v1/chat/completions` — correct. The `/v1` prefix is already in `MISTRAL_URL`. However added explicit `/v1/chat/completions` to be unambiguous and match the Groq/FreeLLMAPI pattern.
+- **`index.html:2177` — Misleading "fetch failed" in UI** — When the Summarize button failed due to an LLM provider error (not a transcript fetch), the error message fell back to `data.error || 'Model returned an error.'` which was often the generic wrapper message. Changed to `data?.error || data?.message || \`LLM provider error (HTTP ${res.status}).\`` to clearly distinguish LLM errors from transcript fetch errors.
+
+### Changed
+
+- **Retryable status codes**: `408, 425, 429, 500, 502, 503, 504, 529`
+
 ## 3.4.8 — 2026-06-21
 
 ### Fixed

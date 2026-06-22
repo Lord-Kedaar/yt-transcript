@@ -1,5 +1,32 @@
 # STATE_LOG — ytTranscript
 
+## 2026-06-22 · LLM error messaging + retry fix (3.4.9)
+
+### Root cause diagnosis
+- Groq returned HTTP **529 Too Many Requests** (over capacity) on Summarize.
+- 529 was NOT in `RETRYABLE_STATUS_CODES` → retry loop skipped immediately.
+- `isRetryableError` matched `'network'` and `'fetch failed'` in the `withRetry` wrapper
+  message (`"Groq chat failed...retrying...network"`) → second attempt on a non-retryable
+  error → finally threw `"fetch failed"` as the error message to UI.
+- Mistral endpoint was `/chat/completions` instead of `/v1/chat/completions` (would have
+  failed anyway since MISTRAL_API_KEY is empty on Lenovo).
+- `LLM_PROVIDER_FALLBACK=` was empty on Lenovo → no fallback chain at all.
+
+### Fixes applied
+- Added `529` to `RETRYABLE_STATUS_CODES`.
+- Removed `'network'` and `'fetch failed'` from `isRetryableError` pattern matching.
+- Fixed Mistral chat endpoint to explicit `/v1/chat/completions`.
+- Frontend now shows `data?.error || data?.message || \`LLM provider error (HTTP ${res.status}).\``
+  instead of generic `'Model returned an error.'`.
+
+### Files changed
+- `server.js` — RETRYABLE_STATUS_CODES, isRetryableError, Mistral endpoint
+- `index.html` — frontend error message
+
+### Deployment
+- Pushed to remote. Lenovo `/srv` is not a git worktree — server.js copied via scp,
+  server restarted (PID 3406669 on port 4002).
+
 ## 2026-06-21 · Preserve Summary + Reconstruction together (3.4.5)
 
 ### Decyzje
