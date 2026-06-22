@@ -1,5 +1,11 @@
 # Changelog
 
+## 3.4.10 — 2026-06-22
+
+### Added
+
+- **Copy buttons for transcript and reconstruction views** — `index.html` header bar in the Transcript card now includes a Copy button for raw transcript (always visible when transcript is loaded) and a Copy button for AI reconstruction (visible only when reconstruction exists). Both use the existing `copyText()` function and appear next to the existing metadata badges.
+
 ## 3.4.9 — 2026-06-22
 
 ### Fixed
