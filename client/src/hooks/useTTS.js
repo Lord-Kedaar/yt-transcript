@@ -1,7 +1,8 @@
-export function useTTS({ initialText = '', lang = 'en' }) {
+export function useTTS({ initialText = '', lang = 'en', type = 'reconstruction' }) {
   let currentAudio = null;
   let _text = initialText;
   let _lang = lang;
+  let _type = type;
 
   return {
     get text() {
@@ -16,9 +17,16 @@ export function useTTS({ initialText = '', lang = 'en' }) {
     set lang(value) {
       _lang = value;
     },
+    get type() {
+      return _type;
+    },
+    set type(value) {
+      _type = value;
+    },
     async speak() {
       const text = _text;
       const lang = _lang;
+      const type = _type;
       if (!text || typeof text !== 'string' || text.trim().length === 0) {
         console.warn('TTS: no text');
         return;
@@ -31,7 +39,7 @@ export function useTTS({ initialText = '', lang = 'en' }) {
         const res = await fetch('/api/tts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: text.trim(), lang }),
+          body: JSON.stringify({ text: text.trim(), lang, type }),
         });
         if (!res.ok) {
           const err = await res.json();

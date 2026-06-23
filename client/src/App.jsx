@@ -89,7 +89,7 @@ export default function App() {
   const [modalAction, setModalAction] = useState(null); // 'reconstruct' | 'summarize'
   const [currentLang, setCurrentLang] = useState(''); // 'translate' => pl, '' => en
   const [isReadingRaw, setIsReadingRaw] = useState(false);
-  const rawTts = useTTS({ text: '', lang: 'en' });
+  const rawTts = useTTS({ text: '', lang: 'en', type: 'reconstruction' });
 
   // Keep rawTTS text in sync with transcriptData
   useEffect(() => {
@@ -521,7 +521,7 @@ export default function App() {
                     </>
                   )}
                 </button>
-                <button className="action-btn" onClick={handleReadRaw} disabled={isReadingRaw}>
+                <button className="action-btn" onClick={handleReadRaw} disabled={isReadingRaw || (!reconstructedText && !summaryText)}>
                   {isReadingRaw ? (
                     <>
                       <span className="spinner-sm" />

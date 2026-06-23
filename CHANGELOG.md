@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.4.11 — 2026-06-23
+
+### Fixed
+
+- **`client/src/hooks/useTTS.js` — audio generation rejects reconstruction as invalid source** — `useTTS.speak()` was sending `{ text, lang }` without the required `type` field. Backend validates `type ∈ ['reconstruction', 'summary']` and returns HTTP 400 `"Invalid audio source. Use reconstruction or summary."` when `type` is missing or falsy. Added `type` parameter to `useTTS` and passed it from all call sites:
+  - `ReconstructedPanel`: `type: 'reconstruction'`
+  - `SummaryPanel`: `type: 'summary'`
+  - `App.jsx rawTts`: `type: 'reconstruction'` (also disabled "Read aloud" button when no reconstruction/summary is available, since raw transcript is not an allowed TTS source)
+
 ## 3.4.10 — 2026-06-22
 
 ### Added

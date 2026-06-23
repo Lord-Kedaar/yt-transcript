@@ -8,7 +8,7 @@ export default function SummaryPanel({ text, lang }) {
   const [showSaveMenu, setShowSaveMenu] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const saveMenuRef = useRef(null);
-  const tts = useTTS({ initialText: text, lang: lang || 'pl' });
+  const tts = useTTS({ initialText: text, lang: lang || 'pl', type: 'summary' });
 
   function renderInlineMarkdown(str) {
     return parseInlineMarkdown(str).map((part, idx) => {
