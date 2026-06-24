@@ -24,3 +24,9 @@ client/public/build-version.json
 logs/
 
 .ai-daily-limit.json
+
+# Internal agent workflow / reports — never commit
+METRICUS_*.md
+STATE_LOG*.md
+*_REPORT.md
+backups/
