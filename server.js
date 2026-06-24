@@ -159,11 +159,11 @@ function detectLanguage(text) {
 // Simple JSON-file store for demo rate-limiting.
 // Stores IP hash + daily count; survives restarts; no Redis needed.
 const AI_DAILY_LIMIT_ENABLED = process.env.YTTRANSCRIPT_AI_DAILY_LIMIT_ENABLED === 'true';
-const AI_DAILY_LIMIT = Number(process.env.YTTRANSCRIPT_AI_DAILY_LIMIT) || 6;
+const AI_DAILY_LIMIT = Number(process.env.YTTRANSCRIPT_AI_DAILY_LIMIT) || 5;
 const AI_LIMIT_STORE_PATH = path.join(__dirname, '.ai-daily-limit.json');
 const AI_CONTACT_EMAIL = process.env.YTTRANSCRIPT_CONTACT_EMAIL || 'kontakt@radoslaw-pleskot.com';
-const PROJECT_DESCRIPTION_URL = process.env.YTTRANSCRIPT_PROJECT_DESCRIPTION_URL || 'https://radoslaw-pleskot.com/portfolio/yttranscript';
-const PRIVACY_POLICY_URL = process.env.YTTRANSCRIPT_PRIVACY_POLICY_URL || 'https://radoslaw-pleskot.com/privacy';
+const PROJECT_DESCRIPTION_URL = process.env.YTTRANSCRIPT_PROJECT_DESCRIPTION_URL || 'https://radoslaw-pleskot.com/projekty/yttranscript/';
+const PRIVACY_POLICY_URL = process.env.YTTRANSCRIPT_PRIVACY_POLICY_URL || 'https://radoslaw-pleskot.com/pl/privacy/';
 
 // Read-only JSON store for IP→{date,count}
 function readLimitStore() {

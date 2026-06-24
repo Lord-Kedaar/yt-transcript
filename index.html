@@ -140,15 +140,14 @@
       width: 11px;
       height: 11px;
       border-radius: 50%;
-      border: 1.5px solid var(--muted-2);
       flex-shrink: 0;
-      transition: border-color 0.15s cubic-bezier(0.2, 0, 0, 1);
+      transition: background-color 0.15s cubic-bezier(0.2, 0, 0, 1);
     }
-    .ai-ring.checking { border-color: var(--muted-2); animation: pulse 1.2s ease-in-out infinite; }
-    .ai-ring.online   { border-color: var(--success); }
-    .ai-ring.partial  { border-color: var(--warning); }
-    .ai-ring.degraded { border-color: var(--warning); }
-    .ai-ring.offline  { border-color: var(--destructive); }
+    .ai-ring.checking { background-color: var(--muted-2); animation: pulse 1.2s ease-in-out infinite; }
+    .ai-ring.online   { background-color: var(--success); }
+    .ai-ring.partial  { background-color: var(--warning); }
+    .ai-ring.degraded { background-color: var(--warning); }
+    .ai-ring.offline  { background-color: var(--destructive); }
 
     .topbar-btn {
       display: inline-flex;
@@ -818,10 +817,18 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
-      width: 100%;
-      max-width: 400px;
+      width: min(92vw, 430px);
+      max-width: 100%;
       box-shadow: 0 24px 64px rgba(0,0,0,0.5);
       padding: 1.5rem;
+      /* Vertically stack icon area and limit info by default */
+      display: flex;
+      flex-direction: column;
+    }
+    @media (min-width: 480px) {
+      .demo-popup {
+        width: min(520px, 90vw);
+      }
     }
     .demo-popup h2 {
       font-size: 1rem;
@@ -837,7 +844,9 @@
     }
     .demo-popup .demo-limit-info {
       display: flex;
+      flex-direction: column;
       align-items: center;
+      justify-content: center;
       gap: 0.5rem;
       font-size: 0.78rem;
       font-weight: 600;
@@ -845,13 +854,22 @@
       background: var(--surface-2);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
-      padding: 0.5rem 0.75rem;
+      padding: 0.75rem;
       margin-bottom: 0.75rem;
+      text-align: center;
+      /* Icon sizing — mobile-first */
+      min-height: 80px;
     }
-    .demo-popup .demo-limit-info svg { flex-shrink: 0; color: var(--primary); }
+    .demo-popup .demo-limit-info svg {
+      width: 80px;
+      height: 80px;
+      color: var(--primary);
+      flex-shrink: 0;
+    }
     .demo-popup .demo-limit-info.limit-reached { border-color: #f59e0b; color: #d97706; }
     .demo-popup .demo-limit-info.limit-reached svg { color: #f59e0b; }
     .demo-popup .demo-limit-info.limit-off { color: var(--muted-2); border-color: transparent; background: transparent; }
+    .demo-popup .demo-limit-info.limit-off svg { color: var(--muted-2); }
     .demo-popup .demo-actions {
       display: flex;
       flex-direction: column;
@@ -1741,8 +1759,8 @@
       } catch (_) { /* network error — show popup with defaults */ }
 
       const { projectDescriptionUrl, privacyPolicyUrl, contactEmail } = healthData;
-      const projectUrl = projectDescriptionUrl || 'https://radoslaw-pleskot.com/portfolio/yttranscript';
-      const privacyUrl = privacyPolicyUrl || 'https://radoslaw-pleskot.com/privacy';
+      const projectUrl = projectDescriptionUrl || 'https://radoslaw-pleskot.com/projekty/yttranscript/';
+      const privacyUrl = privacyPolicyUrl || 'https://radoslaw-pleskot.com/pl/privacy/';
       const email = contactEmail || 'kontakt@radoslaw-pleskot.com';
 
       // Set all links
@@ -1850,6 +1868,7 @@
       summaryMetaBadge.style.display = 'none';
       reconstructionMetaBadge.style.display = 'none';
       copyReconstructionBtn.style.display = 'none';
+      copyTranscriptBtn.style.display = '';   // reset for next transcript load
       S.activeView = 'transcript';
       syncViewSwitcher();
     }
@@ -1883,6 +1902,11 @@
       if (v === 'summary'        && !S.summaryText) return;
 
       S.activeView = v;
+
+      // Fix §duplicate-copy-buttons: only one copy button visible at a time
+      copyTranscriptBtn.style.display    = (v === 'transcript') ? '' : 'none';
+      copyReconstructionBtn.style.display = (v === 'reconstruction') ? '' : 'none';
+
       renderActiveView();
       syncViewSwitcher();
     }
@@ -1953,8 +1977,8 @@
 
       if (S.reconstructedText) {
         transcriptReconstructed.innerHTML = md(S.reconstructedText);
-        copyReconstructionBtn.style.display = '';
       }
+      // copyTranscriptBtn / copyReconstructionBtn visibility is now managed by setActiveView
       renderReconstructionMeta();
       syncViewSwitcher();
     }
@@ -2117,7 +2141,6 @@
         reconstructionMetaBadge.style.display = 'inline-flex';
         reconstructionMetaBadge.textContent = text;
       }
-      copyReconstructionBtn.style.display = S.reconstructedText ? '' : 'none';
     }
 
     /* RENDER: SUMMARY */
@@ -2149,9 +2172,9 @@
         S.transcriptData = data;
         S.reconstructedText = '';
         S.summaryText = '';
-        copyReconstructionBtn.style.display = 'none';
         setLoading(false);
-        renderTranscript();
+        setActiveView('transcript');  // drives copy button visibility + render
+        renderTranscript();           // populate transcriptBody + toolbar + viewSwitcher
         renderSummary();
         sessionStorage.setItem('ytt_url', S.url);
       } catch (err) {
