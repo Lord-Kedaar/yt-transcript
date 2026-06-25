@@ -1,0 +1,3 @@
+# Force .env out of any archive commit
+.env
+.env.*
