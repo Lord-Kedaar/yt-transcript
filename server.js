@@ -57,7 +57,10 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
 
 const BUILD_INFO_PATH = path.join(__dirname, 'client', 'dist', 'build-info.json');
-const INDEX_HTML_PATH = path.join(__dirname, 'client', 'dist', 'index.html');
+// v3.4.0: serve single-file Rhea redesign from repo root (replaces React SPA
+// at client/dist/index.html). Server.js patch for /api/transform targetLang
+// is independent — see MERGE_BRIEF.md.
+const INDEX_HTML_PATH = path.join(__dirname, 'index.html');
 
 // TTS config (Piper). When PIPER_BIN does not exist the /api/tts endpoint
 // returns 503 with a clear message instead of crashing.
@@ -75,6 +78,175 @@ const TTS_VOICES = {
 };
 const ttsCacheDir = '/tmp/tts-cache';
 fs.mkdirSync(ttsCacheDir, { recursive: true });
+
+// ─── TTS-prep LLM prompts (source: PIPER_TTS_PREP_PROMPT_SOURCE_EN_DE_PL.md) ──
+const TTS_PREP_SYSTEM_PROMPTS = {
+  en: `Prepare the text for natural English text-to-speech playback with Piper.
+
+Rules:
+- Preserve meaning, facts, names, order and tone.
+- Do not summarize, translate, expand the argument, add commentary or remove important content.
+- Improve spoken rhythm through punctuation, sentence splitting and paragraph breaks.
+- Expand dates, numbers, measurements, symbols and abbreviations into natural spoken English where helpful.
+- Make technical terms and acronyms easier to pronounce only when needed.
+- Do not add markdown, headings, tags, SSML, XML, stage directions or pronunciation notes.
+- Output only the final clean text that should be sent to Piper.`,
+
+  de: `Bereite den Text für eine natürliche deutsche Sprachausgabe mit Piper vor.
+
+Regeln:
+- Bedeutung, Fakten, Namen, Reihenfolge und Ton beibehalten.
+- Nicht zusammenfassen, nicht übersetzen, keine Argumente ergänzen, keine Kommentare hinzufügen und keine wichtigen Inhalte entfernen.
+- Den Sprechrhythmus durch Zeichensetzung, Satzteilung und Absatzstruktur verbessern.
+- Daten, Zahlen, Maßeinheiten, Symbole und Abkürzungen dort in natürliche gesprochene deutsche Formen umwandeln, wo es für die Aussprache hilft.
+- Auf Kasus, Genus, Numerus und Kongruenz achten, besonders bei Zahlen und Maßeinheiten.
+- Technische Begriffe und Akronyme nur dann sprechbarer machen, wenn Piper sie sonst wahrscheinlich schlecht liest.
+- Kein Markdown, keine Überschriften, keine Tags, kein SSML, kein XML, keine Regieanweisungen, keine Aussprache-Notizen.
+- Gib ausschließlich den finalen, sauberen Text aus, der direkt an Piper gesendet wird.`,
+
+  pl: `Przygotuj tekst do naturalnego odczytu po polsku przez Piper.
+
+Zasady:
+- Zachowaj sens, fakty, nazwy, kolejność i ton.
+- Nie streszczaj, nie tłumacz, nie rozwijaj argumentacji, nie dodawaj komentarzy i nie usuwaj ważnych treści.
+- Popraw rytm mowy przez interpunkcję, dzielenie zbyt długich zdań i sensowne akapity.
+- Daty, liczby, jednostki, symbole i skróty zamieniaj na naturalne formy mówione tam, gdzie pomaga to wymowie.
+- Pilnuj polskiej fleksji: przypadka, rodzaju, liczby i zgodności, szczególnie przy liczebnikach i jednostkach.
+- Terminy techniczne i akronimy upraszczaj fonetycznie tylko wtedy, gdy Piper prawdopodobnie przeczytałby je źle.
+- Nie dodawaj markdowna, nagłówków, tagów, SSML, XML, didaskaliów ani notatek wymowy.
+- Zwróć wyłącznie finalny czysty tekst, który ma zostać wysłany bezpośrednio do Piper.`,
+};
+
+function buildPiperPrepUserPrompt(text, sourceType, language) {
+  const langLabel = { en: 'English', de: 'German', pl: 'Polish' }[language] || language;
+  return `Prepare the following ytTranscript AI result for Piper TTS.
+
+Source type: ${sourceType}
+Language: ${langLabel}
+
+Rules:
+- Prepare only this ${sourceType === 'reconstruction' ? 'AI reconstruction' : 'Summary'} for spoken playback.
+- Do not summarize again.
+- Do not translate.
+- Do not add facts.
+- Do not output markdown.
+- Do not output SSML.
+- Do not output Fish Audio tags.
+- Do not output notes or explanations.
+- Return only plain Piper-ready text.
+
+Text:
+
+${text}`;
+}
+
+// Sentinels returned by the TTS-prep LLM that must not reach Piper
+const TTS_PREP_SENTINELS = ['PIPER_TTS_PREP_EMPTY_INPUT', 'PIPER_TTS_PREP_REJECTED_UNSUPPORTED_SOURCE_TYPE'];
+
+function isTtsPrepSentinel(value) {
+  return TTS_PREP_SENTINELS.includes(String(value).trim());
+}
+
+// Detect language from text sample — mirrors frontend auto-detect
+function detectLanguage(text) {
+  const sample = String(text || '').slice(0, 400);
+  if (/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/.test(sample)) return 'pl';
+  if (/[äöüßÄÖÜ]/.test(sample)) return 'de';
+  return 'en';
+}
+
+// ── AI Daily Demo Limit ───────────────────────────────────────────
+// Simple JSON-file store for demo rate-limiting.
+// Stores IP hash + daily count; survives restarts; no Redis needed.
+const AI_DAILY_LIMIT_ENABLED = process.env.YTTRANSCRIPT_AI_DAILY_LIMIT_ENABLED === 'true';
+const AI_DAILY_LIMIT = Number(process.env.YTTRANSCRIPT_AI_DAILY_LIMIT) || 5;
+const AI_LIMIT_STORE_PATH = path.join(__dirname, '.ai-daily-limit.json');
+const AI_CONTACT_EMAIL = process.env.YTTRANSCRIPT_CONTACT_EMAIL || 'kontakt@radoslaw-pleskot.com';
+const PROJECT_DESCRIPTION_URL = process.env.YTTRANSCRIPT_PROJECT_DESCRIPTION_URL || 'https://radoslaw-pleskot.com/projekty/yttranscript/';
+const PRIVACY_POLICY_URL = process.env.YTTRANSCRIPT_PRIVACY_POLICY_URL || 'https://radoslaw-pleskot.com/pl/privacy/';
+
+// Read-only JSON store for IP→{date,count}
+function readLimitStore() {
+  try {
+    if (fs.existsSync(AI_LIMIT_STORE_PATH)) {
+      return JSON.parse(fs.readFileSync(AI_LIMIT_STORE_PATH, 'utf8'));
+    }
+  } catch { /* corrupt or missing → start fresh */ }
+  return {};
+}
+function writeLimitStore(data) {
+  try {
+    fs.writeFileSync(AI_LIMIT_STORE_PATH, JSON.stringify(data, null, 2), 'utf8');
+  } catch (err) {
+    console.error('[AI limit] Store write failed:', err.message);
+  }
+}
+
+// Get today's date string in UTC: "YYYY-MM-DD"
+function todayUtc() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Resolve client IP, honouring X-Forwarded-For behind a trusted proxy.
+// Only trusts X-Forwarded-For when CORS_ORIGIN is a specific domain (not "*").
+function clientIp(req) {
+  const trustProxy = CORS_ORIGIN !== '*';
+  let ip = req.ip || req.socket?.remoteAddress || '';
+  if (trustProxy && req.headers['x-forwarded-for']) {
+    // Take the first (original client) IP
+    ip = req.headers['x-forwarded-for'].split(',')[0].trim();
+  }
+  // Normalize IPv4-mapped IPv6 addresses (::ffff:x.x.x.x) to plain IPv4
+  if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+  // Hash to avoid storing raw IPs; keep only last 16 hex chars
+  return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 16);
+}
+
+// Check and increment daily AI action count.
+// Returns { allowed: boolean, usedToday: number, remainingToday: number }
+function checkAiLimit(ip) {
+  if (!AI_DAILY_LIMIT_ENABLED) {
+    return { allowed: true, usedToday: null, remainingToday: null, limitEnabled: false };
+  }
+  const store = readLimitStore();
+  const today = todayUtc();
+  const entry = store[ip] || { date: today, count: 0 };
+  if (entry.date !== today) {
+    entry.date = today;
+    entry.count = 0;
+  }
+  if (entry.count >= AI_DAILY_LIMIT) {
+    return { allowed: false, usedToday: entry.count, remainingToday: 0, limitEnabled: true, limit: AI_DAILY_LIMIT };
+  }
+  entry.count += 1;
+  store[ip] = entry;
+
+  // Periodic stale-entry cleanup: remove entries older than yesterday (runs on ~1% of requests)
+  const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
+  let cleaned = 0;
+  for (const k of Object.keys(store)) {
+    if (store[k].date < yesterday) { delete store[k]; cleaned++; }
+  }
+  if (cleaned > 0) writeLimitStore(store); // single write after mutation
+
+  return { allowed: true, usedToday: entry.count, remainingToday: AI_DAILY_LIMIT - entry.count, limitEnabled: true, limit: AI_DAILY_LIMIT };
+}
+
+// Express middleware: block /api/transform when AI daily limit is exhausted
+function aiDailyLimitGuard(req, _res, next) {
+  if (!AI_DAILY_LIMIT_ENABLED) return next();
+  const ip = clientIp(req);
+  const result = checkAiLimit(ip);
+  if (!result.allowed) {
+    return _res.status(429).json({
+      error: 'Daily demo limit reached.',
+      message: `You have used all ${AI_DAILY_LIMIT} AI actions available today. Contact Radosław to unlock the demo.`,
+      contactEmail: AI_CONTACT_EMAIL,
+      subject: 'Prośba o odblokowanie limitu demo ytTranscript',
+    });
+  }
+  next();
+}
 
 // ── Security: CORS (default: local dev, lock to env in production) ──────────
 const CORS_ORIGIN =
@@ -113,7 +285,7 @@ const TRANSCRIPT_MISSING_PATTERNS = [
   'subtitles',
   'subtitle',
 ];
-const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 
 app.disable('x-powered-by');
 app.use(cors({ origin: CORS_ORIGIN }));
@@ -159,17 +331,19 @@ function isRetryableError(err) {
   }
 
   const message = getErrorMessage(err).toLowerCase();
+  // NOTE: do NOT match generic 'network' or 'fetch failed' — those appear in
+  // withRetry wrapper messages (e.g. "Groq chat failed...retrying...network")
+  // and cause false-positive retry loops. Real network errors from fetch() are
+  // distinguishable by their cause: AbortError (timeout), ECONNRESET, ETIMEDOUT.
   return (
     message.includes('aborterror') ||
     message.includes('timed out') ||
     message.includes('timeout') ||
-    message.includes('fetch failed') ||
     message.includes('econnreset') ||
     message.includes('connection reset') ||
     message.includes('eai_again') ||
     message.includes('etimedout') ||
     message.includes('socket hang up') ||
-    message.includes('network') ||
     message.includes('headers-timeout') ||
     message.includes('headers timeout')
   );
@@ -378,10 +552,7 @@ function buildOmlxProvider() {
   return {
     name: 'oMLX',
     async chat(messages, { timeoutMs = 120000, retryOpts = {} } = {}) {
-      const candidateModels = [
-        OMLX_MODEL,
-        ...OMLX_FALLBACK_MODELS.filter(m => m !== OMLX_MODEL),
-      ];
+      const candidateModels = [OMLX_MODEL, ...OMLX_FALLBACK_MODELS.filter(m => m !== OMLX_MODEL)];
       let lastError;
       for (const model of candidateModels) {
         try {
@@ -401,7 +572,10 @@ function buildOmlxProvider() {
           return { content: data?.choices?.[0]?.message?.content ?? '', raw: data, model };
         } catch (err) {
           lastError = err;
-          if (!isOmlxMemoryPressureError(err) || model === candidateModels[candidateModels.length - 1]) {
+          if (
+            !isOmlxMemoryPressureError(err) ||
+            model === candidateModels[candidateModels.length - 1]
+          ) {
             throw err;
           }
           console.warn(`oMLX model ${model} OOM; trying next fallback: ${getErrorMessage(err)}`);
@@ -418,9 +592,20 @@ function buildOmlxProvider() {
           { attempts: 2, baseDelayMs: 500, label: 'oMLX probe' },
         );
         const models = Array.isArray(data?.data) ? data.data.map(m => m?.id).filter(Boolean) : [];
-        return { ok: true, state: 'connected', loaded: models.includes(OMLX_MODEL), models, modelCount: models.length };
+        return {
+          ok: true,
+          state: 'connected',
+          loaded: models.includes(OMLX_MODEL),
+          models,
+          modelCount: models.length,
+        };
       } catch (err) {
-        return { ok: false, state: 'unreachable', error: getErrorMessage(err), retryable: isRetryableError(err) };
+        return {
+          ok: false,
+          state: 'unreachable',
+          error: getErrorMessage(err),
+          retryable: isRetryableError(err),
+        };
       }
     },
   };
@@ -441,7 +626,12 @@ function buildFreeLLMAPIProvider() {
               'Content-Type': 'application/json',
               Authorization: `Bearer ${FREELLMAPI_API_KEY}`,
             },
-            body: JSON.stringify({ model: FREELLMAPI_MODEL, messages, temperature: 0.1, max_tokens: 8192 }),
+            body: JSON.stringify({
+              model: FREELLMAPI_MODEL,
+              messages,
+              temperature: 0.1,
+              max_tokens: 8192,
+            }),
           }),
         { attempts: 2, baseDelayMs: 1200, label: 'FreeLLMAPI chat', ...retryOpts },
       );
@@ -456,7 +646,10 @@ function buildFreeLLMAPIProvider() {
         await fetchJsonOnce(`${FREELLMAPI_URL}/v1/chat/completions`, {
           method: 'POST',
           timeoutMs: 8000,
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${FREELLMAPI_API_KEY}` },
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${FREELLMAPI_API_KEY}`,
+          },
           body: JSON.stringify({
             model: FREELLMAPI_MODEL,
             messages: [{ role: 'user', content: 'ping' }],
@@ -465,7 +658,12 @@ function buildFreeLLMAPIProvider() {
         });
         return { ok: true, state: 'connected', loaded: true };
       } catch (err) {
-        return { ok: false, state: 'unreachable', error: getErrorMessage(err), retryable: isRetryableError(err) };
+        return {
+          ok: false,
+          state: 'unreachable',
+          error: getErrorMessage(err),
+          retryable: isRetryableError(err),
+        };
       }
     },
   };
@@ -487,9 +685,14 @@ function buildMistralProvider() {
               Accept: 'application/json',
               ...(MISTRAL_API_KEY ? { Authorization: `Bearer ${MISTRAL_API_KEY}` } : {}),
             },
-            body: JSON.stringify({ model: MISTRAL_MODEL, messages, temperature: 0.1, max_tokens: 8192 }),
+            body: JSON.stringify({
+              model: MISTRAL_MODEL,
+              messages,
+              temperature: 0.1,
+              max_tokens: 8192,
+            }),
           }),
-        { attempts: 2, baseDelayMs: 1200, label: 'Mistral chat', ...retryOpts },
+        { attempts: 2, baseDelayMs: 1200, label: `Mistral chat (${MISTRAL_MODEL})`, ...retryOpts },
       );
       return {
         content: data?.choices?.[0]?.message?.content ?? '',
@@ -512,9 +715,20 @@ function buildMistralProvider() {
           { attempts: 1, baseDelayMs: 0, label: 'Mistral probe' },
         );
         const models = Array.isArray(data?.data) ? data.data.map(m => m?.id).filter(Boolean) : [];
-        return { ok: true, state: 'connected', loaded: models.includes(MISTRAL_MODEL), models, modelCount: models.length };
+        return {
+          ok: true,
+          state: 'connected',
+          loaded: models.includes(MISTRAL_MODEL),
+          models,
+          modelCount: models.length,
+        };
       } catch (err) {
-        return { ok: false, state: 'unreachable', error: getErrorMessage(err), retryable: isRetryableError(err) };
+        return {
+          ok: false,
+          state: 'unreachable',
+          error: getErrorMessage(err),
+          retryable: isRetryableError(err),
+        };
       }
     },
   };
@@ -536,7 +750,12 @@ function buildGroqProvider() {
               Accept: 'application/json',
               ...(GROQ_API_KEY ? { Authorization: `Bearer ${GROQ_API_KEY}` } : {}),
             },
-            body: JSON.stringify({ model: GROQ_MODEL, messages, temperature: 0.1, max_tokens: 8192 }),
+            body: JSON.stringify({
+              model: GROQ_MODEL,
+              messages,
+              temperature: 0.1,
+              max_tokens: 8192,
+            }),
           }),
         { attempts: 2, baseDelayMs: 1200, label: 'Groq chat', ...retryOpts },
       );
@@ -562,9 +781,20 @@ function buildGroqProvider() {
           { attempts: 1, baseDelayMs: 0, label: 'Groq probe' },
         );
         const models = Array.isArray(data?.data) ? data.data.map(m => m?.id).filter(Boolean) : [];
-        return { ok: true, state: 'connected', loaded: models.includes(GROQ_MODEL), models, modelCount: models.length };
+        return {
+          ok: true,
+          state: 'connected',
+          loaded: models.includes(GROQ_MODEL),
+          models,
+          modelCount: models.length,
+        };
       } catch (err) {
-        return { ok: false, state: 'unreachable', error: getErrorMessage(err), retryable: isRetryableError(err) };
+        return {
+          ok: false,
+          state: 'unreachable',
+          error: getErrorMessage(err),
+          retryable: isRetryableError(err),
+        };
       }
     },
   };
@@ -825,9 +1055,31 @@ app.get('/api/build-version', async (req, res) => {
   });
 });
 
+app.get('/api/ai-limit-status', (req, res) => {
+  noCache(res);
+  const ip = clientIp(req);
+  if (!AI_DAILY_LIMIT_ENABLED) {
+    return res.json({ limitEnabled: false, dailyLimit: null, usedToday: null, remainingToday: null });
+  }
+  const store = readLimitStore();
+  const today = todayUtc();
+  const entry = store[ip];
+  if (!entry || entry.date !== today) {
+    return res.json({ limitEnabled: true, dailyLimit: AI_DAILY_LIMIT, usedToday: 0, remainingToday: AI_DAILY_LIMIT });
+  }
+  res.json({
+    limitEnabled: true,
+    dailyLimit: AI_DAILY_LIMIT,
+    usedToday: entry.count,
+    remainingToday: Math.max(0, AI_DAILY_LIMIT - entry.count),
+  });
+});
+
 app.get('/api/health', async (req, res) => {
   noCache(res);
+  const t0 = Date.now();
   const lmStatus = await checkOmlx();
+  const latencyMs = Date.now() - t0;
   // Resolve the configured model for the active primary provider so /api/health
   // stays accurate as providers are added.
   const activeModel = (() => {
@@ -843,8 +1095,23 @@ app.get('/api/health', async (req, res) => {
         return OMLX_MODEL;
     }
   })();
+  // Feature availability derived from the prompt registry — when a prompt key
+  // is removed in the future, the corresponding feature flag flips to false,
+  // which lets the frontend expose a real "partial" state instead of a fake
+  // "online". Today both are always true.
+  const features = {
+    reconstruct: Boolean(TRANSFORM_PROMPTS.reconstruct),
+    summarize: Boolean(TRANSFORM_PROMPTS.summarize),
+  };
+  const mode = lmStatus.ok
+    ? (llmProvider.name === 'oMLX' ? 'local' : 'remote')
+    : 'unavailable';
   res.json({
     status: lmStatus.ok ? 'ok' : 'degraded',
+    mode,
+    features,
+    latencyMs,
+    checkedAt: new Date().toISOString(),
     provider: llmProvider.name,
     providerState: lmStatus.state,
     providerDetails: lmStatus,
@@ -852,6 +1119,9 @@ app.get('/api/health', async (req, res) => {
     buildVersion: (await loadBuildInfo())?.builtAt || null,
     uptimeSeconds: Math.round(process.uptime()),
     cacheEntries: cache.size,
+    projectDescriptionUrl: PROJECT_DESCRIPTION_URL,
+    privacyPolicyUrl: PRIVACY_POLICY_URL,
+    contactEmail: AI_CONTACT_EMAIL,
   });
 });
 
@@ -862,7 +1132,11 @@ app.get('/api/lm-status', async (req, res) => {
   // so this layer is a defense-in-depth for cold-start edge cases.
   const guard = setTimeout(() => {
     if (!res.headersSent) {
-      res.status(503).json({ ok: false, state: 'unreachable-fast', error: 'health probe timeout (express-side)' });
+      res.status(503).json({
+        ok: false,
+        state: 'unreachable-fast',
+        error: 'health probe timeout (express-side)',
+      });
     }
   }, 2000);
   try {
@@ -945,7 +1219,7 @@ function rawTextGuard(req, _res, next) {
   next();
 }
 
-app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
+app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, async (req, res) => {
   noCache(res);
   const { snippets, type, mode = 'original' } = req.body || {};
   if (!Array.isArray(snippets) || snippets.length === 0) {
@@ -975,18 +1249,33 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
 
   let systemPrompt = promptDef.system;
   if (mode === 'translate') {
-    systemPrompt +=
-      type === 'reconstruct'
-        ? '\nTranslate the entire output into Polish. Return Polish only.'
-        : '\nTranslate the entire summary into Polish. Return Polish only.';
+    const targetLang = req.body.targetLang || 'pl';
+    // defensive: only allow 'pl' | 'de' | 'en' (en = noop, fallback)
+    const allowed = ['pl', 'de', 'en'];
+    const lang = allowed.includes(targetLang) ? targetLang : 'pl';
+
+    if (lang !== 'en') {
+      const langName = lang === 'de' ? 'German' : 'Polish';
+      systemPrompt +=
+        type === 'reconstruct'
+          ? `\nTranslate the entire output into ${langName}. Return ${langName} only.`
+          : `\nTranslate the entire summary into ${langName}. Return ${langName} only.`;
+    }
   }
 
-  const translationSuffix =
-    mode === 'translate'
-      ? '\nOutput must be only in Polish. No English. No bilingual version. Preserve the same structure: one intro paragraph, then themed sections with bold headers and short paragraphs.'
-      : '';
+  const translationSuffix = (() => {
+    if (mode !== 'translate') return '';
+    const allowed = ['pl', 'de', 'en'];
+    const lang = allowed.includes(req.body.targetLang) ? req.body.targetLang : 'pl';
+    if (lang === 'en') return ''; // no-op translation
+    const langName = lang === 'de' ? 'German' : 'Polish';
+    return `\nOutput must be only in ${langName}. No other language. No bilingual version. Preserve the same structure: one intro paragraph, then themed sections with bold headers and short paragraphs.`;
+  })();
 
   const userPrompt = `${userPrefix}\n\n${rawText}\n\n${userSuffix}${translationSuffix}`;
+
+  // Capture timing just before the chat call so elapsedMs reflects actual work.
+  const startAt = Date.now();
 
   try {
     const messages = [
@@ -1012,14 +1301,26 @@ app.post('/api/transform', rawTextGuard, transformLimiter, async (req, res) => {
     }
 
     const responseKey = type === 'reconstruct' ? 'reconstructed' : 'summary';
-    const cacheKey = `${type}:${mode}:${hashKey(rawText)}`;
-    setCache(cacheKey, { [responseKey]: output, snippetCount: snippets.length, model: result.model });
+    const cacheKey = `${type}:${mode}:${req.body.targetLang || 'pl'}:${hashKey(rawText)}`;
+    const elapsedMs = Date.now() - startAt;
+    // OpenAI-compatible upstream responses include usage.total_tokens; not all
+    // providers return it (some free tiers omit it), so null is acceptable.
+    const tokens = result.raw?.usage?.total_tokens ?? null;
+    setCache(cacheKey, {
+      [responseKey]: output,
+      snippetCount: snippets.length,
+      model: result.model,
+      elapsedMs,
+      tokens,
+    });
 
     res.json({
       [responseKey]: output,
       snippetCount: snippets.length,
       model: result.model,
       provider: llmProvider.name,
+      elapsedMs,
+      tokens,
     });
   } catch (err) {
     console.error(`Transform/${type} error:`, err);
@@ -1036,13 +1337,6 @@ app.get('/', async (req, res) => {
 // Graceful degradation: if Piper binary is missing, /api/tts returns 503
 // with a clear hint instead of crashing the server. The frontend will
 // surface the error in the useTTS hook without breaking the UI.
-function detectLanguage(text) {
-  const sample = String(text || '').slice(0, 400);
-  if (/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]/.test(sample)) return 'pl';
-  if (/[äöüßÄÖÜ]/.test(sample)) return 'de';
-  return 'en';
-}
-
 function stripMarkdownForTTS(text) {
   return String(text || '')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
@@ -1100,9 +1394,23 @@ function ttsBodyGuard(req, _res, next) {
   next();
 }
 
+// Allowed audio-source types — only reconstruction and summary are permitted.
+// Raw transcript must NEVER reach the TTS pipeline.
+const ALLOWED_TTS_TYPES = new Set(['reconstruction', 'summary']);
+const SUPPORTED_TTS_LANGS = new Set(['en', 'de', 'pl']);
+
 app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
   noCache(res);
-  const { text, lang } = req.body || {};
+  const { type, language, text } = req.body || {};
+
+  // 1. Validate type — reject raw transcript or any other value
+  if (!type || !ALLOWED_TTS_TYPES.has(type)) {
+    return res.status(400).json({
+      error: 'Invalid audio source. Use reconstruction or summary.',
+    });
+  }
+
+  // 2. Validate text
   if (!text || typeof text !== 'string' || text.trim().length === 0) {
     return res.status(400).json({ error: 'Text is required and must be non-empty.' });
   }
@@ -1115,14 +1423,69 @@ app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
   }
 
   try {
-    const detectedLang = lang && TTS_VOICES[lang] ? lang : detectLanguage(text);
-    const id = `${detectedLang}-${crypto.randomBytes(8).toString('hex')}`;
+    // 3. Resolve language (use provided, or detect)
+    const resolvedLang = language && SUPPORTED_TTS_LANGS.has(language)
+      ? language
+      : (detectLanguage(text) || 'en');
+
+    if (!SUPPORTED_TTS_LANGS.has(resolvedLang)) {
+      return res.status(400).json({
+        error: 'Language not supported with audio function.',
+        hint: 'Supported languages: English, German, Polish.',
+      });
+    }
+
+    // 4. TTS-prep LLM — silently clean text for Piper
+    console.log(`[TTS] Preparing ${type} text (${text.length} chars) for Piper in ${resolvedLang}...`);
+    const llm = llmProvider;
+    const prepMessages = [
+      { role: 'system', content: TTS_PREP_SYSTEM_PROMPTS[resolvedLang] || TTS_PREP_SYSTEM_PROMPTS.en },
+      { role: 'user', content: buildPiperPrepUserPrompt(text, type, resolvedLang) },
+    ];
+    let preparedText;
+    try {
+      const prepResponse = await llm.chat(prepMessages, { timeoutMs: 60000, model: null });
+      preparedText = String(typeof prepResponse === 'string' ? prepResponse
+        : prepResponse?.content || prepResponse?.text || prepResponse?.output || '')
+        .trim();
+
+      // Guard: if LLM returned a sentinel, do not send to Piper
+      if (isTtsPrepSentinel(preparedText)) {
+        console.error(`[TTS] LLM returned sentinel "${preparedText}" — aborting Piper.`);
+        return res.status(422).json({
+          error: 'Audio preparation failed. The provided text could not be processed.',
+        });
+      }
+    } catch (prepErr) {
+      console.error('[TTS] LLM prep error:', prepErr.message);
+      // Fall back to stripped raw text rather than failing completely
+      preparedText = stripMarkdownForTTS(text);
+      console.warn('[TTS] Falling back to stripped raw text for Piper.');
+    }
+
+    console.log(`[TTS] Prep done (${preparedText.length} chars) — synthesizing...`);
+
+    // 5. Cache key: reuse existing audio for identical input
+    const textHash = crypto.createHash('sha256').update(`${type}:${resolvedLang}:${preparedText}`).digest('hex').slice(0, 16);
+    const id = `${resolvedLang}-${type}-${textHash}`;
     const outPath = path.join(ttsCacheDir, `${id}.wav`);
-    await generateTTS(stripMarkdownForTTS(text), detectedLang, outPath);
-    res.json({ audioUrl: `/api/audio/${id}.wav`, lang: detectedLang });
+
+    let audioUrl;
+    if (fs.existsSync(outPath)) {
+      // Cache hit — reuse existing file
+      audioUrl = `/api/audio/${id}.wav`;
+      console.log(`[TTS] Cache hit for ${id}`);
+    } else {
+      // 6. Piper synthesis
+      await generateTTS(preparedText, resolvedLang, outPath);
+      audioUrl = `/api/audio/${id}.wav`;
+      console.log(`[TTS] Synthesized ${id} (${preparedText.length} chars) → ${audioUrl}`);
+    }
+
+    res.json({ audioUrl, durationMs: null, language: resolvedLang });
   } catch (err) {
     console.error('TTS error:', err.message);
-    res.status(500).json({ error: `TTS generation failed: ${err.message}` });
+    res.status(500).json({ error: `Audio generation failed: ${err.message}` });
   }
 });
 

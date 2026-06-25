@@ -1,0 +1,2643 @@
+
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ytTranscript — YouTube transcripts with AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;510;600&display=swap" rel="stylesheet" />
+  <style>
+    /* ============================================================
+       SHADCN RHEA TOKENS — Zinc base, Purple primary, Lime AI
+       ============================================================ */
+    :root {
+      --bg:           #09090b;
+      --surface:      #18181b;
+      --surface-2:    #27272a;
+      --border:      #3f3f46;
+      --fg:           #fafafa;
+      --muted:        #a1a1aa;
+      --muted-2:      #71717a;
+      --primary:      #8b5cf6;
+      --primary-hover:#a78bfa;
+      --primary-fg:   #ffffff;
+      --accent:       #84cc16;
+      --accent-soft:  rgba(132, 204, 22, 0.12);
+      --accent-fg:    #1a2e05;
+      --destructive:  #ef4444;
+      --destructive-soft: rgba(239, 68, 68, 0.1);
+      --warning:      #f59e0b;
+      --warning-soft: rgba(245, 158, 11, 0.1);
+      --success:      #22c55e;
+      --radius-sm:    6px;
+      --radius:       8px;
+      --radius-lg:    12px;
+      --topbar-h:     56px;
+      --col-w:        min(720px, 100%);
+      --font:         'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      --font-mono:    'SFMono-Regular', 'Consolas', 'Liberation Mono', Menlo, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html {
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.6;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 100dvh;
+    }
+
+    /* ===== TOP BAR ===== */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      height: var(--topbar-h);
+      background: rgba(9, 9, 11, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1rem;
+    }
+
+    .topbar-left {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+    }
+
+    .topbar-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-decoration: none;
+      color: var(--fg);
+    }
+
+    .topbar-logo-icon { width: 22px; height: 22px; color: var(--primary); flex-shrink: 0; }
+
+    .topbar-logo-text {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+    }
+
+    .topbar-badge {
+      font-size: 0.65rem;
+      font-weight: 510;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      padding: 0.15rem 0.45rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--muted-2);
+    }
+
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .provider-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      height: 36px;
+      padding: 0 0.625rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--muted-2);
+      font-size: 0.8rem;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 0.15s cubic-bezier(0.2, 0, 0, 1), background 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .provider-badge:hover { background: var(--surface-2); border-color: var(--accent); }
+    .provider-badge:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .provider-badge[data-state="online"]  #providerLabel { color: var(--success); }
+    .provider-badge[data-state="partial"] #providerLabel { color: var(--warning); }
+    .provider-badge[data-state="degraded"]#providerLabel { color: var(--warning); }
+    .provider-badge[data-state="offline"] #providerLabel { color: var(--destructive); }
+
+    .ai-ring {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      transition: background-color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .ai-ring.checking { background-color: var(--muted-2); animation: pulse 1.2s ease-in-out infinite; }
+    .ai-ring.online   { background-color: var(--success); }
+    .ai-ring.partial  { background-color: var(--warning); }
+    .ai-ring.degraded { background-color: var(--warning); }
+    .ai-ring.offline  { background-color: var(--destructive); }
+
+    .topbar-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      height: 36px;
+      padding: 0 0.75rem;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s cubic-bezier(0.2, 0, 0, 1), color 0.15s cubic-bezier(0.2, 0, 0, 1), border-color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    .topbar-btn:hover { background: var(--surface); color: var(--fg); border-color: var(--border); }
+
+    .topbar-btn svg {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+    }
+
+    /* ===== MAIN COLUMN ===== */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 2rem 1rem 4rem;
+      gap: 1.25rem;
+    }
+
+    .col {
+      width: var(--col-w);
+      align-self: center;
+      justify-self: center;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    /* ===== URL FORM ===== */
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+    }
+
+    .form-label {
+      font-size: 0.8rem;
+      font-weight: 510;
+      color: var(--fg);
+      letter-spacing: -0.005em;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .input-wrap {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+    }
+
+    .input-icon {
+      position: absolute;
+      left: 0.75rem;
+      width: 16px;
+      height: 16px;
+      color: var(--muted-2);
+      pointer-events: none;
+    }
+
+    .input {
+      width: 100%;
+      height: 42px;
+      padding: 0 0.875rem 0 2.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--fg);
+      font-size: 0.875rem;
+      font-family: var(--font);
+      transition: border-color 0.15s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    .input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(167, 139, 250, 0.2);
+    }
+
+    .input:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .form-helper {
+      font-size: 0.75rem;
+      color: var(--muted-2);
+      padding-left: 0.125rem;
+    }
+
+    .form-error {
+      font-size: 0.75rem;
+      color: var(--destructive);
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+
+    .form-error svg { width: 13px; height: 13px; flex-shrink: 0; }
+
+    /* ===== BUTTONS ===== */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      height: 42px;
+      padding: 0 1.125rem;
+      border-radius: var(--radius);
+      font-size: 0.875rem;
+      font-weight: 510;
+      font-family: var(--font);
+      white-space: nowrap;       /* keep button labels on a single line */
+      cursor: pointer;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--fg);
+      text-decoration: none;
+      transition: background 0.15s cubic-bezier(0.2, 0, 0, 1), opacity 0.15s cubic-bezier(0.2, 0, 0, 1), transform 0.12s cubic-bezier(0.2, 0, 0, 1), border-color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn:active:not(:disabled) { transform: translateY(0.5px); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    .btn-primary {
+      background: var(--primary);
+      color: var(--primary-fg);
+    }
+
+    .btn-primary:hover:not(:disabled) { background: var(--primary-hover); }
+
+    .btn-secondary {
+      background: var(--surface);
+      border-color: var(--border);
+      color: var(--fg);
+    }
+
+    .btn-secondary:hover:not(:disabled) {
+      background: var(--surface-2);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .btn-ghost:hover:not(:disabled) {
+      background: var(--surface);
+      color: var(--fg);
+    }
+
+    /* AI action button — lime accent hints at premium AI feature.
+       Brief §5: removed the lime ::before dot. Now lime border + lime hover. */
+    .btn-ai {
+      background: var(--surface);
+      border-color: rgba(132, 204, 22, 0.35);
+      color: var(--fg);
+      position: relative;
+    }
+    .btn-ai:hover:not(:disabled) {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--fg);
+    }
+    .btn-ai:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+      border-color: var(--accent);
+    }
+    .btn-ai[disabled],
+    .btn-ai:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%      { opacity: 0.4; }
+    }
+
+    /* ===== SPINNER ===== */
+    .spinner {
+      width: 15px;
+      height: 15px;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ===== EMPTY STATE ===== */
+    .empty-state {
+      text-align: center;
+      padding: 3.5rem 1rem;
+      color: var(--muted-2);
+    }
+
+    .empty-state-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 1rem;
+      opacity: 0.4;
+    }
+
+    .empty-state p {
+      font-size: 0.9rem;
+      max-width: 36ch;
+      margin: 0 auto;
+      line-height: 1.55;
+    }
+
+    /* ===== CARD ===== */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.875rem 1rem;
+      font-weight: 600;
+
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--fg);
+    }
+
+    .card-title svg { width: 15px; height: 15px; color: var(--primary); flex-shrink: 0; }
+
+    .card-body {
+      padding: 1rem;
+    }
+
+    .card-meta {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      font-size: 0.7rem;
+      color: var(--muted-2);
+      flex-wrap: wrap;
+    }
+
+    /* ===== BADGE ===== */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 600;
+
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--muted-2);
+    }
+
+    .badge-primary {
+      background: rgba(167, 139, 250, 0.15);
+      border: 1px solid rgba(167, 139, 250, 0.3);
+      color: var(--primary);
+    }
+
+    .badge-accent {
+      background: var(--accent-soft);
+      border: 1px solid rgba(132, 204, 22, 0.25);
+      color: var(--accent);
+    }
+
+    .badge-muted {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--muted-2);
+    }
+
+    .badge-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0;
+    }
+
+    /* ===== VIEW SWITCHER (top-level tabs above content panel) ===== */
+    .view-switcher {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      align-self: center;
+      justify-self: center;
+    }
+    .view-tab {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      height: 32px;
+      padding: 0 0.875rem;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: calc(var(--radius) - 2px);
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-weight: 530;
+      font-family: var(--font);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s cubic-bezier(0.2, 0, 0, 1), color 0.15s cubic-bezier(0.2, 0, 0, 1), border-color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .view-tab:hover:not([aria-pressed="true"]):not(:disabled) {
+      color: var(--fg);
+      background: var(--surface-2);
+    }
+    .view-tab[aria-pressed="true"] {
+      background: var(--accent-soft);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .view-tab:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .view-tab:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    /* ===== TRANSCRIPT CONTENT ===== */
+    .transcript-body {
+      padding: 0.875rem 1rem;
+      max-height: 520px;
+      overflow-y: auto;
+      font-size: 0.875rem;
+      line-height: 1.65;
+      color: var(--fg);
+    }
+
+    .transcript-body::-webkit-scrollbar { width: 6px; }
+    .transcript-body::-webkit-scrollbar-track { background: transparent; }
+    .transcript-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .transcript-raw .seg { display: flex; gap: 0.75rem; padding: 0.45rem 0.75rem; border-radius: var(--radius-sm); cursor: pointer; transition: background 0.1s; }
+    .transcript-raw .seg:hover { background: rgba(255,255,255,0.04); }
+    .transcript-raw .seg.active { background: rgba(167, 139, 250, 0.1); }
+
+    .ts {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--muted-2);
+      flex-shrink: 0;
+      min-width: 34px;
+      padding-top: 0.1rem;
+    }
+
+    .tx { flex: 1; }
+
+    .transcript-reconstructed .para {
+      margin-bottom: 1em;
+      color: var(--fg);
+    }
+
+    /* ===== AI PROGRESS ===== */
+    .ai-progress {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      padding: 0.625rem 1rem;
+      background: var(--accent-soft);
+      border-top: 1px solid rgba(132, 204, 22, 0.2);
+      font-size: 0.78rem;
+      color: var(--accent);
+    }
+
+    .ai-progress-spinner {
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(132, 204, 22, 0.3);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+
+    /* ===== ACTION TOOLBAR ===== */
+    .toolbar {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .toolbar .btn { justify-content: center; }
+
+    .toolbar-shell {
+      width: var(--col-w);
+      justify-self: center;
+      align-self: center;
+      padding: 0.875rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: rgba(24, 24, 27, 0.72);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .summary-body {
+      padding: 1rem;
+      font-size: 0.875rem;
+      line-height: 1.65;
+    }
+
+    .prose {
+      color: var(--fg);
+      font-size: 0.9375rem;
+      line-height: 1.78;
+      letter-spacing: -0.005em;
+    }
+
+    .prose > *:first-child { margin-top: 0; }
+    .prose > *:last-child { margin-bottom: 0; }
+
+    .prose p {
+      margin: 0 0 1rem;
+      color: rgba(244, 244, 245, 0.92);
+    }
+
+    .prose h1,
+    .prose h2,
+    .prose h3 {
+      color: var(--fg);
+      letter-spacing: -0.02em;
+      line-height: 1.25;
+    }
+
+    .prose h1 {
+      font-size: 1.45rem;
+      margin: 0 0 1rem;
+      font-weight: 680;
+    }
+
+    .prose h2 {
+      font-size: 1.15rem;
+      margin: 1.45rem 0 0.6rem;
+      font-weight: 650;
+      padding-bottom: 0.35rem;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .prose h3 {
+      font-size: 0.98rem;
+      margin: 1.15rem 0 0.45rem;
+      font-weight: 620;
+      color: rgba(244, 244, 245, 0.96);
+    }
+
+    .prose ul,
+    .prose ol {
+      margin: 0.65rem 0 1rem 1.25rem;
+      padding: 0;
+      color: rgba(244, 244, 245, 0.9);
+    }
+
+    .prose li {
+      margin: 0.35rem 0;
+      padding-left: 0.2rem;
+    }
+
+    .prose li::marker { color: var(--accent); }
+
+    .prose strong {
+      color: var(--fg);
+      font-weight: 680;
+    }
+
+    .prose em {
+      color: rgba(244, 244, 245, 0.86);
+      font-style: italic;
+    }
+
+    .prose a {
+      color: var(--accent);
+      text-decoration: underline;
+      text-decoration-color: rgba(132, 204, 22, 0.35);
+      text-underline-offset: 3px;
+    }
+
+    .prose code {
+      font-family: var(--font-mono);
+      font-size: 0.86em;
+      color: var(--accent);
+      background: rgba(132, 204, 22, 0.08);
+      border: 1px solid rgba(132, 204, 22, 0.14);
+      border-radius: 0.35rem;
+      padding: 0.1rem 0.3rem;
+    }
+
+    .prose pre {
+      margin: 1rem 0;
+      padding: 0.9rem 1rem;
+      overflow-x: auto;
+      background: rgba(9, 9, 11, 0.72);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: var(--radius);
+    }
+
+    .prose pre code {
+      display: block;
+      padding: 0;
+      color: rgba(244, 244, 245, 0.9);
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      white-space: pre;
+    }
+
+    .summary-intro {
+      color: var(--muted);
+      margin-bottom: 1em;
+    }
+
+    .summary-section { margin-bottom: 1.25em; }
+
+    .summary-section-header {
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--fg);
+      margin-bottom: 0.35em;
+      letter-spacing: 0.01em;
+    }
+
+    .summary-section ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3em;
+    }
+
+    .summary-section li {
+      padding-left: 1em;
+      position: relative;
+      color: var(--muted);
+    }
+
+    .summary-section li::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0.6em;
+      width: 4px;
+      height: 4px;
+      border-radius: 50%;
+      background: var(--primary);
+    }
+
+    .summary-placeholder {
+      padding: 1.5rem 1rem;
+      text-align: center;
+      color: var(--muted-2);
+      font-size: 0.82rem;
+    }
+
+    /* ===== TTS READ ALOUD INLINE CONTROLS ===== */
+    .tts-inline-bar {
+      display: none;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.72rem;
+      color: var(--muted-2);
+      flex-wrap: wrap;
+    }
+    .tts-inline-bar.visible { display: flex; }
+    .tts-inline-bar .tts-lang-group {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+    .tts-inline-bar .tts-lang-btn {
+      height: 26px;
+      padding: 0 0.5rem;
+      background: var(--surface-2);
+      border: none;
+      border-right: 1px solid var(--border);
+      color: var(--muted-2);
+      font-size: 0.7rem;
+      font-weight: 510;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .tts-inline-bar .tts-lang-btn:last-child { border-right: none; }
+    .tts-inline-bar .tts-lang-btn:hover { background: var(--border); color: var(--muted); }
+    .tts-inline-bar .tts-lang-btn.active { background: var(--primary); color: #fff; }
+    .tts-inline-bar .tts-status {
+      flex: 1;
+      font-size: 0.7rem;
+      color: var(--muted-2);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tts-inline-bar audio {
+      height: 28px;
+      flex: 1;
+      min-width: 120px;
+      accent-color: var(--primary);
+    }
+    .tts-inline-bar .tts-error {
+      color: var(--danger, #ef4444);
+      font-size: 0.7rem;
+    }
+
+    /* ===== DEMO POPUP ===== */
+    #demoPopup {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 300;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      overflow-y: auto;
+    }
+    @supports (backdrop-filter: blur(4px)) {
+      #demoPopup {
+        backdrop-filter: blur(4px);
+        -webkit-backdrop-filter: blur(4px);
+      }
+    }
+    #demoPopup.open { display: flex; }
+    .demo-popup {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      width: min(92vw, 430px);
+      max-width: 100%;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+      padding: 1.5rem;
+      /* Vertically stack icon area and limit info by default */
+      display: flex;
+      flex-direction: column;
+    }
+    @media (min-width: 480px) {
+      .demo-popup {
+        width: min(520px, 90vw);
+      }
+    }
+    .demo-popup h2 {
+      font-size: 1rem;
+      font-weight: 700;
+      margin: 0 0 0.75rem;
+      color: var(--fg);
+    }
+    .demo-popup p {
+      font-size: 0.8rem;
+      line-height: 1.55;
+      color: var(--muted-2);
+      margin: 0 0 0.75rem;
+    }
+    .demo-popup .demo-limit-info {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--fg);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+      text-align: center;
+      /* Icon sizing — mobile-first */
+      min-height: 80px;
+    }
+    .demo-popup .demo-limit-info svg {
+      width: 80px;
+      height: 80px;
+      color: var(--primary);
+      flex-shrink: 0;
+    }
+    .demo-popup .demo-limit-info.limit-reached { border-color: #f59e0b; color: #d97706; }
+    .demo-popup .demo-limit-info.limit-reached svg { color: #f59e0b; }
+    .demo-popup .demo-limit-info.limit-off { color: var(--muted-2); border-color: transparent; background: transparent; }
+    .demo-popup .demo-limit-info.limit-off svg { color: var(--muted-2); }
+    .demo-popup .demo-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+    .demo-popup .demo-actions .btn { width: 100%; justify-content: center; }
+    .demo-popup .demo-links {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      margin-top: 0.75rem;
+    }
+    .demo-popup .demo-links a {
+      font-size: 0.72rem;
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .demo-popup .demo-links a:hover { text-decoration: underline; }
+    .demo-popup .demo-privacy-note {
+      font-size: 0.68rem;
+      color: var(--muted-2);
+      text-align: center;
+      margin-top: 0.5rem;
+    }
+
+    /* ===== COLLAPSIBLE (legacy — kept for other collapsibles) ===== */
+    .collapsible {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .collapsible-trigger {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.875rem 1rem;
+      background: var(--surface);
+      border: none;
+      cursor: pointer;
+      color: var(--fg);
+      font-family: var(--font);
+      font-size: 0.875rem;
+      font-weight: 600;
+    }
+
+    .collapsible-trigger-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .collapsible-trigger svg { width: 15px; height: 15px; color: var(--primary); }
+
+    .collapsible-chevron {
+      width: 16px;
+      height: 16px;
+      color: var(--muted-2);
+      transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+    }
+    details[open] .collapsible-chevron { transform: rotate(180deg); }
+
+    .collapsible-content {
+      display: none;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .collapsible.open .collapsible-content { display: block; }
+
+    .tts-controls {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.875rem 1rem;
+      flex-wrap: wrap;
+    }
+
+    .tts-lang-group {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+    }
+
+    .tts-lang-btn {
+      height: 32px;
+      padding: 0 0.625rem;
+      background: var(--surface-2);
+      border: none;
+      border-right: 1px solid var(--border);
+      color: var(--muted-2);
+      font-size: 0.75rem;
+      font-weight: 510;
+      cursor: pointer;
+      transition: background 0.15s cubic-bezier(0.2, 0, 0, 1), color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .tts-lang-btn:hover { background: var(--border); color: var(--muted); }
+    .tts-lang-btn.active { background: var(--primary); color: #fff; }
+
+    .tts-audio-wrap {
+      padding: 0.875rem 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .tts-audio {
+      width: 100%;
+      height: 36px;
+      border-radius: var(--radius-sm);
+      accent-color: var(--primary);
+    }
+
+    /* ===== LANGUAGE DIALOG ===== */
+    .dialog-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 200;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+
+    .dialog-overlay.open { display: flex; }
+
+    .dialog {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      width: 100%;
+      max-width: 420px;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    }
+
+    .dialog-header {
+      padding: 1.125rem 1.25rem 0.875rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .dialog-title {
+      font-size: 0.9375rem;
+      font-weight: 600;
+
+      font-size: 0.78rem;
+      color: var(--muted-2);
+      line-height: 1.45;
+    }
+
+    .dialog-body {
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .dialog-btn {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 0.875rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--fg);
+      font-size: 0.875rem;
+      font-weight: 500;
+      font-family: var(--font);
+      cursor: pointer;
+      transition: background 0.15s cubic-bezier(0.2, 0, 0, 1), border-color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .dialog-btn:hover { border-color: var(--primary); background: var(--surface); }
+    .dialog-btn svg { width: 16px; height: 16px; color: var(--muted-2); }
+
+    .dialog-cancel {
+      width: 100%;
+      padding: 0.625rem;
+      background: transparent;
+      border: none;
+      color: var(--muted-2);
+      font-size: 0.8rem;
+      font-family: var(--font);
+
+      cursor: pointer;
+      text-align: center;
+      border-top: 1px solid var(--border);
+      margin-top: 0.25rem;
+      transition: color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    .dialog-cancel:hover { color: var(--muted); }
+
+    /* ===== DROPDOWN MENU ===== */
+    .dropdown {
+      position: relative;
+      display: inline-flex;
+    }
+
+    .dropdown-menu {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 0;
+      min-width: 160px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+      z-index: 150;
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .dropdown.open .dropdown-menu { display: flex; }
+
+    .dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 0.625rem;
+      padding: 0.625rem 0.875rem;
+      background: transparent;
+      border: none;
+      color: var(--fg);
+      font-size: 0.82rem;
+      font-family: var(--font);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.15s cubic-bezier(0.2, 0, 0, 1), color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .dropdown-item:hover { background: var(--surface-2); color: var(--primary); }
+    .dropdown-item svg { width: 14px; height: 14px; color: var(--muted-2); }
+
+    /* ===== DIAGNOSTICS SHEET removed ===== */
+
+    .empty-state-sub {
+      font-size: 0.78rem;
+      color: var(--muted-2);
+      max-width: 42ch;
+      margin: 0.5rem auto 0;
+      line-height: 1.5;
+    }
+
+    .dialog-desc {
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin-bottom: 0.875rem;
+    }
+
+    .alert {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      padding: 0.625rem 0.875rem;
+      border-radius: var(--radius);
+      font-size: 0.78rem;
+      line-height: 1.5;
+    }
+    .alert svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 1px; }
+
+    .alert-warning {
+      background: var(--warning-soft);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      color: var(--warning);
+    }
+
+    /* ===== ERROR MESSAGE ===== */
+    .inline-error {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.625rem 0.875rem;
+      background: var(--destructive-soft);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      border-radius: var(--radius);
+      font-size: 0.78rem;
+      color: var(--destructive);
+    }
+
+    .inline-error svg { width: 14px; height: 14px; flex-shrink: 0; }
+
+    /* ===== FOOTER ===== */
+    .footer {
+      text-align: center;
+      padding: 1.5rem 1rem 3rem;
+      font-size: 0.75rem;
+      color: var(--muted-2);
+      border-top: 1px solid var(--border);
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .footer-links a {
+      color: var(--muted-2);
+      text-decoration: none;
+      font-size: 0.75rem;
+      transition: color 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .footer-links a:hover { color: var(--fg); }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 640px) {
+      .input-row { flex-direction: column; }
+      .btn { width: 100%; justify-content: center; }
+      .toolbar { flex-direction: column; }
+      .toolbar .btn { width: 100%; }
+      .card-header { flex-direction: column; align-items: flex-start; }
+      .topbar-btn span { display: none; }
+      .topbar-btn { padding: 0 0.5rem; }
+      .topbar-right { gap: 0.25rem; }
+    }
+
+    @media (max-width: 390px) {
+      :root { --topbar-h: 50px; }
+      .topbar-badge { display: none; }
+      .provider-badge { padding: 0.25rem; }
+      /* Show compact "AI" acronym in mobile — full label is too wide for small screens */
+      .provider-badge #providerLabel { display: none; }
+      .provider-badge::after {
+        content: 'AI';
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--muted-2);
+        letter-spacing: 0.02em;
+      }
+      .main { padding: 1.25rem 0.75rem 3rem; }
+    }
+
+    @media (max-width: 320px) {
+      .main { padding: 1rem 0.625rem 2.5rem; }
+      .col { gap: 0.75rem; }
+      .topbar { padding: 0 0.625rem; }
+      .topbar-logo-text { font-size: 0.85rem; }
+    }
+
+    /* ===== FOCUS ===== */
+    :focus-visible {
+      outline: 2px solid var(--primary);
+      outline-offset: 2px;
+    }
+
+    button:focus:not(:focus-visible),
+    input:focus:not(:focus-visible) { outline: none; }
+
+    /* ===== SELECTION ===== */
+    ::selection { background: rgba(167, 139, 250, 0.3); }
+
+    /* ===== PREFERS REDUCED MOTION ===== */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ===== TOAST ===== */
+    .toast-host {
+      position: fixed;
+      bottom: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .toast {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 0.875rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      color: var(--fg);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.18s cubic-bezier(0.2, 0, 0, 1), transform 0.18s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .toast svg { width: 14px; height: 14px; color: var(--accent); flex-shrink: 0; }
+
+    /* ===== SKIP LINK ===== */
+    .skip-link {
+      position: fixed;
+      top: -100%;
+      left: 0.5rem;
+      background: var(--primary);
+      color: #fff;
+      padding: 0.4rem 0.75rem;
+      border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+      font-size: 0.8rem;
+      font-weight: 510;
+      z-index: 100;
+      transition: top 0.15s cubic-bezier(0.2, 0, 0, 1);
+    }
+    .skip-link:focus { top: 0; }
+
+    /* ===== RESET ROW ===== */
+    .reset-row {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    /* ===== COPY SUCCESS ===== */
+    .copy-success {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      color: var(--success);
+      font-size: 0.78rem;
+    }
+
+    .copy-success svg { width: 13px; height: 13px; }
+
+    /* ===== ICON BTN ===== */
+    .icon-btn {
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--muted-2);
+      cursor: pointer;
+      transition: background 0.15s cubic-bezier(0.2, 0, 0, 1), color 0.15s cubic-bezier(0.2, 0, 0, 1);
+      flex-shrink: 0;
+    }
+
+    .icon-btn:hover { background: var(--surface-2); color: var(--fg); }
+    .icon-btn svg { width: 14px; height: 14px; }
+
+    /* ===== PANEL FOOTER ===== */
+    .panel-footer {
+      display: flex;
+      gap: 1rem;
+      padding: 0.625rem 1rem;
+      border-top: 1px solid var(--border);
+      font-size: 0.72rem;
+      color: var(--muted-2);
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to content</a>
+
+  <div class="toast-host" id="toastHost" aria-live="polite" aria-atomic="true"></div>
+
+  <!-- TOP BAR -->
+  <header class="topbar" role="banner">
+    <div class="topbar-left">
+      <a href="#" class="topbar-logo" aria-label="ytTranscript">
+        <svg class="topbar-logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+          <path d="M8 10l4 3-4 3v-6z"/>
+        </svg>
+        <span class="topbar-logo-text">ytTranscript</span>
+      </a>
+      <span class="topbar-badge" aria-label="Demonstration version">demo</span>
+    </div>
+
+    <nav class="topbar-right" aria-label="Main navigation">
+      <button class="provider-badge" id="providerBadge" type="button" aria-live="polite" aria-label="AI provider status — click to refresh">
+        <span class="ai-ring online" id="providerRing" aria-hidden="true"></span>
+        <span id="providerLabel">AI</span>
+      </button>
+
+      <a class="topbar-btn" id="topbarProjectLink" href="#" target="_blank" rel="noopener" aria-label="Project description">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        <span>Project description</span>
+      </a>
+    </nav>
+  </header>
+
+  <!-- MAIN -->
+  <main class="main" id="main-content" role="main">
+
+    <!-- URL FORM -->
+    <section class="col" id="urlSection" aria-label="URL form">
+      <div class="form-group">
+        <label class="form-label" for="urlInput">Paste a YouTube video link</label>
+        <div class="input-row">
+          <div class="input-wrap">
+            <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/>
+            </svg>
+            <input
+              id="urlInput"
+              class="input"
+              type="text"
+              placeholder="https://www.youtube.com/watch?v=..."
+              value=""
+              autocomplete="off"
+              spellcheck="false"
+              aria-describedby="urlHelper urlError"
+            />
+          </div>
+          <button class="btn btn-primary" id="fetchBtn" type="button" disabled aria-label="Fetch transcript">
+            <span id="fetchSpinner" class="spinner" style="display:none" aria-hidden="true"></span>
+            <span id="fetchLabel">Fetch transcript</span>
+          </button>
+        </div>
+        <p class="form-helper" id="urlHelper">Standard YouTube and youtu.be links are supported.</p>
+        <p class="form-error" id="urlError" style="display:none" role="alert" aria-live="assertive">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span id="urlErrorText"></span>
+        </p>
+      </div>
+    </section>
+
+
+    <!-- EMPTY STATE -->
+    <div class="empty-state" id="emptyState" role="status">
+      <svg class="empty-state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/>
+        <path d="M8 10l4 3-4 3v-6z"/>
+      </svg>
+      <p>Paste a YouTube video link to fetch the transcript.</p>
+      <p class="empty-state-sub">After fetching, you can reconstruct the text, generate a summary, export the file, or use TTS.</p>
+    </div>
+
+    <!-- ACTION TOOLBAR (top-level; visible only after transcript loads) -->
+      <!-- Toolbar -->
+    <div class="toolbar-shell" id="toolbarShell" style="display:none">
+        <div class="toolbar" id="toolbar">
+          <button class="btn btn-ai" id="reconstructBtn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83"/>
+            </svg>
+            Reconstruct with AI
+          </button>
+          <button class="btn btn-ai" id="summarizeBtn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="16" y1="13" x2="8" y2="13"/>
+              <line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            Summarize with AI
+          </button>
+          <!-- Export Dropdown -->
+          <div class="dropdown" id="exportDropdown">
+            <button class="btn btn-secondary" id="exportTrigger" type="button" aria-haspopup="menu" aria-expanded="false" aria-label="Export">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Export…
+            </button>
+            <div class="dropdown-menu" role="menu" aria-label="Export format">
+              <button class="dropdown-item" id="exportTxt" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                TXT
+              </button>
+              <button class="dropdown-item" id="exportSrt" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.5M3 12h.5M3 18h.5"/></svg>
+                SRT
+              </button>
+              <button class="dropdown-item" id="exportMd" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Markdown
+              </button>
+              <button class="dropdown-item" id="exportPdf" role="menuitem">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                PDF
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="reset-row">
+          <button class="btn btn-ghost" id="resetBtn" type="button" style="font-size:0.78rem;height:32px;padding:0 0.625rem;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:13px;height:13px">
+              <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+            </svg>
+            New transcript
+          </button>
+        </div>
+      </div>
+
+    <!-- VIEW SWITCHER (sibling of cards; visible only after transcript loads) -->
+    <div class="view-switcher" id="viewSwitcher" role="group" aria-label="Content view" style="display:none">
+      <button class="view-tab" id="viewTranscript"     type="button" aria-pressed="true"  aria-controls="transcriptCard">Transcript</button>
+      <button class="view-tab" id="viewReconstruction" type="button" aria-pressed="false" aria-controls="transcriptCard" disabled title="Generate AI reconstruction first">AI Reconstruction</button>
+      <button class="view-tab" id="viewSummary"        type="button" aria-pressed="false" aria-controls="summaryCard"      disabled title="Generate AI summary first">AI Summary</button>
+    </div>
+
+    <!-- TRANSCRIPT CARD -->
+    <section class="card" id="transcriptCard" style="display:none" role="region" aria-label="Transcript view">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          Transcript
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
+          <span class="badge badge-muted" id="langBadge">—</span>
+          <span class="badge badge-muted" id="charBadge">—</span>
+          <span class="badge badge-accent" id="reconstructionMetaBadge" style="display:none"></span>
+          <button class="icon-btn" id="copyTranscriptBtn" type="button" aria-label="Copy transcript" title="Copy transcript">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+            </svg>
+          </button>
+          <button class="icon-btn" id="copyReconstructionBtn" type="button" aria-label="Copy reconstruction" title="Copy reconstruction" style="display:none">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="transcript-body" id="transcriptBody" role="region" aria-label="Transcript content" aria-live="polite">
+        <div class="transcript-raw" id="transcriptRaw"></div>
+        <div class="transcript-reconstructed prose" id="transcriptReconstructed" style="display:none"></div>
+      </div>
+
+      <div class="ai-progress" id="aiProgress" style="display:none" role="status" aria-live="polite">
+        <div class="ai-progress-spinner" aria-hidden="true"></div>
+        <span id="aiProgressText"></span>
+      </div>
+
+      <!-- TTS inline bar for AI Reconstruction -->
+      <div class="tts-inline-bar" id="ttsReconstructBar">
+        <div class="tts-lang-group" role="group" aria-label="TTS language">
+          <button class="tts-lang-btn active" data-lang="pl" type="button">pl</button>
+          <button class="tts-lang-btn" data-lang="en" type="button">en</button>
+          <button class="tts-lang-btn" data-lang="de" type="button">de</button>
+        </div>
+        <button class="btn btn-secondary" id="ttsReconstructGenerateBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:14px;height:14px;flex-shrink:0">
+            <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+            <path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
+          </svg>
+          <span>Generate audio</span>
+        </button>
+        <audio id="ttsReconstructAudio" controls style="display:none;height:28px;flex:1;min-width:120px;accent-color:var(--primary);"></audio>
+        <a class="btn btn-ghost" id="ttsReconstructDownloadBtn" type="button" download style="display:none;height:26px;font-size:0.7rem;padding:0 0.625rem;text-decoration:none;">Download WAV</a>
+        <span class="tts-status" id="ttsReconstructStatus"></span>
+      </div>
+    </section>
+
+    <!-- SUMMARY CARD -->
+    <section class="card" id="summaryCard" style="display:none" role="region" aria-label="AI Summary view">
+      <div class="card-header">
+        <div class="card-title">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          Summary
+        </div>
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <span class="badge badge-accent" id="summaryMetaBadge" style="display:none"></span>
+          <button class="icon-btn" id="copySummaryBtn" type="button" aria-label="Copy summary" title="Copy">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="summary-body prose" id="summaryBody">
+        <p class="summary-placeholder">A summary will appear here after you click "Summarize with AI".</p>
+      </div>
+      <div class="panel-footer" id="summaryFooter" style="display:none">
+        <span id="summaryCharCount">—</span>
+      </div>
+
+      <!-- TTS inline bar for AI Summary -->
+      <div class="tts-inline-bar" id="ttsSummaryBar">
+        <div class="tts-lang-group" role="group" aria-label="TTS language">
+          <button class="tts-lang-btn active" data-lang="pl" type="button">pl</button>
+          <button class="tts-lang-btn" data-lang="en" type="button">en</button>
+          <button class="tts-lang-btn" data-lang="de" type="button">de</button>
+        </div>
+        <button class="btn btn-secondary" id="ttsSummaryGenerateBtn" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true" style="width:14px;height:14px;flex-shrink:0">
+            <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+            <path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
+          </svg>
+          <span>Generate audio</span>
+        </button>
+        <audio id="ttsSummaryAudio" controls style="display:none;height:28px;flex:1;min-width:120px;accent-color:var(--primary);"></audio>
+        <a class="btn btn-ghost" id="ttsSummaryDownloadBtn" type="button" download style="display:none;height:26px;font-size:0.7rem;padding:0 0.625rem;text-decoration:none;">Download WAV</a>
+        <span class="tts-status" id="ttsSummaryStatus"></span>
+      </div>
+    </section>
+
+    <!-- TTS INLINE PLAYER (injected dynamically inside transcriptCard / summaryCard) -->
+
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer" role="contentinfo">
+    <span>© 2026 Radosław Pleskot · ytTranscript</span>
+    <div class="footer-links">
+      <a id="footerProjectLink" href="#" target="_blank" rel="noopener">Project description</a>
+      <a id="footerPrivacyLink" href="#" target="_blank" rel="noopener">Privacy policy</a>
+    </div>
+  </footer>
+
+  <!-- DEMO POPUP -->
+  <div id="demoPopup" role="dialog" aria-modal="true" aria-labelledby="demoPopupTitle" aria-describedby="demoPopupDesc">
+    <div class="demo-popup">
+      <h2 id="demoPopupTitle">ytTranscript — Demo</h2>
+      <p id="demoPopupDesc">This is a public demo of ytTranscript. The app uses AI to generate transcripts, reconstructions and summaries of YouTube videos.</p>
+      <div class="demo-limit-info" id="demoLimitInfo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>
+        </svg>
+        <span id="demoLimitText">Loading…</span>
+      </div>
+      <div class="demo-actions">
+        <button class="btn btn-primary" id="demoOkBtn" type="button">OK</button>
+        <div class="demo-links">
+          <a id="demoPrivacyLink" href="#" target="_blank" rel="noopener">Privacy policy</a>
+          <a id="demoContactLink" href="#" rel="noopener">Contact about unlock</a>
+        </div>
+      </div>
+      <p class="demo-privacy-note">Your IP address (hashed) is stored locally to enforce the demo limit. No personal data is collected.</p>
+    </div>
+  </div>
+
+  <!-- LANGUAGE DIALOG -->
+  <div class="dialog-overlay" id="langDialog" role="dialog" aria-modal="true" aria-labelledby="langDialogTitle" aria-describedby="langDialogDesc">
+    <div class="dialog">
+      <div class="dialog-header">
+        <h2 class="dialog-title" id="langDialogTitle">Choose processing mode</h2>
+        <p class="dialog-desc" id="langDialogDesc">Keep the original language or translate the transcript before further processing.</p>
+      </div>
+      <div class="dialog-body">
+        <button class="dialog-btn" id="langOriginal" type="button">
+          Keep original language
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <button class="dialog-btn" id="langDe" type="button" data-lang="de">
+          Translate to German
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+        <button class="dialog-btn" id="langPl" type="button" data-lang="pl">
+          Translate to Polish
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+      <button class="dialog-cancel" id="langCancel" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <!-- APPLICATION LOGIC -->
+  <script>
+  (function () {
+    'use strict';
+
+    /* STATE */
+    const S = {
+      url:            '',
+      loading:        false,
+      aiLoading:     false,
+      aiProgress:    '',
+      error:          '',
+      transcriptData: null,
+      reconstructedText: '',
+      summaryText:    '',
+      currentLang:   '',
+      activeView:    'transcript',           /* brief §16: one of 'transcript' | 'reconstruction' | 'summary' */
+      lastAiMeta:    null,                  /* {model, elapsedMs, tokens} from latest /api/transform response */
+      lastReconstructionMeta: null,         /* same shape, for reconstruction view */
+      lastHealthInfo: null,                  /* full /api/health payload for tooltip */
+    };
+
+    /* DOM REFS */
+    const $ = id => document.getElementById(id);
+    const urlInput      = $('urlInput');
+    const fetchBtn      = $('fetchBtn');
+    const fetchLabel    = $('fetchLabel');
+    const toastHost     = $('toastHost');
+
+    /* TOAST */
+    function showToast(msg) {
+      if (!toastHost) return;
+      const t = document.createElement('div');
+      t.className = 'toast';
+      t.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg><span>${msg}</span>`;
+      toastHost.appendChild(t);
+      requestAnimationFrame(() => t.classList.add('show'));
+      setTimeout(() => {
+        t.classList.remove('show');
+        setTimeout(() => t.remove(), 200);
+      }, 1800);
+    }
+    const fetchSpinner  = $('fetchSpinner');
+    const urlError      = $('urlError');
+    const urlErrorText  = $('urlErrorText');
+    const emptyState    = $('emptyState');
+    const toolbarShell  = $('toolbarShell');
+    const transcriptCard= $('transcriptCard');
+    const summaryCard   = $('summaryCard');
+    const ttsReconstructBar = $('ttsReconstructBar');
+    const ttsSummaryBar    = $('ttsSummaryBar');
+    const viewSwitcher  = $('viewSwitcher');
+    const viewTranscript= $('viewTranscript');
+    const viewReconstruction= $('viewReconstruction');
+    const viewSummary   = $('viewSummary');
+    const transcriptRaw = $('transcriptRaw');
+    const transcriptReconstructed = $('transcriptReconstructed');
+    const langBadge     = $('langBadge');
+    const charBadge     = $('charBadge');
+    const reconstructionMetaBadge = $('reconstructionMetaBadge');
+    const aiProgress    = $('aiProgress');
+    const aiProgressText= $('aiProgressText');
+    const reconstructBtn= $('reconstructBtn');
+    const summarizeBtn  = $('summarizeBtn');
+    const exportDropdown= $('exportDropdown');
+    const exportTrigger = $('exportTrigger');
+    const resetBtn      = $('resetBtn');
+    const langDialog    = $('langDialog');
+    const summaryBody   = $('summaryBody');
+    const summaryMetaBadge = $('summaryMetaBadge');
+    const summaryFooter = $('summaryFooter');
+    const summaryCharCount = $('summaryCharCount');
+    const copySummaryBtn= $('copySummaryBtn');
+    const copyTranscriptBtn = $('copyTranscriptBtn');
+    const copyReconstructionBtn = $('copyReconstructionBtn');
+    const providerRing  = $('providerRing');
+    const providerLabel = $('providerLabel');
+    const providerBadge = $('providerBadge');
+    const demoPopup     = $('demoPopup');
+    const demoOkBtn    = $('demoOkBtn');
+    const demoLimitInfo = $('demoLimitInfo');
+    const demoLimitText = $('demoLimitText');
+    const demoPrivacyLink = $('demoPrivacyLink');
+    const demoContactLink = $('demoContactLink');
+    const footerProjectLink = $('footerProjectLink');
+    const footerPrivacyLink = $('footerPrivacyLink');
+    const topbarProjectLink = $('topbarProjectLink');
+
+    /* DEMO POPUP */
+    const DEMO_POPUP_KEY = 'ytt_demo_popup_dismissed';
+    async function initDemoPopup() {
+      // Fetch limit status and health (for URLs) in parallel
+      let limitData = { limitEnabled: false, dailyLimit: null, usedToday: null, remainingToday: null };
+      let healthData = {};
+      try {
+        const [limitRes, healthRes] = await Promise.all([
+          fetch('/api/ai-limit-status'),
+          fetch('/api/health'),
+        ]);
+        if (limitRes.ok) limitData = await limitRes.json();
+        if (healthRes.ok) healthData = await healthRes.json();
+      } catch (_) { /* network error — show popup with defaults */ }
+
+      const { projectDescriptionUrl, privacyPolicyUrl, contactEmail } = healthData;
+      const projectUrl = projectDescriptionUrl || 'https://radoslaw-pleskot.com/projekty/yttranscript/';
+      const privacyUrl = privacyPolicyUrl || 'https://radoslaw-pleskot.com/pl/privacy/';
+      const email = contactEmail || 'kontakt@radoslaw-pleskot.com';
+
+      // Set all links
+      [footerProjectLink, topbarProjectLink].forEach(el => { if (el) el.href = projectUrl; });
+      [footerPrivacyLink, demoPrivacyLink].forEach(el => { if (el) el.href = privacyUrl; });
+      if (demoContactLink) {
+        demoContactLink.href = `mailto:${email}?subject=${encodeURIComponent('Prośba o odblokowanie limitu demo ytTranscript')}`;
+      }
+
+      // Update limit info in popup
+      if (limitData.limitEnabled) {
+        const { usedToday = 0, dailyLimit = 6, remainingToday = 0 } = limitData;
+        const used = usedToday;
+        const total = dailyLimit;
+        if (remainingToday === 0) {
+          demoLimitInfo.className = 'demo-limit-info limit-reached';
+          demoLimitText.textContent = `Limit reached · ${used}/${total} AI actions used today`;
+        } else {
+          demoLimitInfo.className = 'demo-limit-info';
+          demoLimitText.textContent = `Pozostało dziś: ${remainingToday} z ${total} akcji AI`;
+        }
+      } else {
+        demoLimitInfo.className = 'demo-limit-info limit-off';
+        demoLimitText.textContent = 'Demo limit is currently disabled';
+      }
+
+      // Show popup if not dismissed
+      if (!sessionStorage.getItem(DEMO_POPUP_KEY)) {
+        demoPopup.classList.add('open');
+      }
+    }
+
+    if (demoOkBtn) {
+      demoOkBtn.addEventListener('click', () => {
+        demoPopup.classList.remove('open');
+        sessionStorage.setItem(DEMO_POPUP_KEY, '1');
+      });
+    }
+
+    // Kick off popup init (async, non-blocking)
+    initDemoPopup();
+
+    /* HELPERS */
+    function setError(msg) {
+      S.error = msg;
+      if (msg) {
+        urlErrorText.textContent = msg;
+        urlError.style.display = 'flex';
+        urlError.setAttribute('role', 'alert');
+      } else {
+        urlError.style.display = 'none';
+        urlError.removeAttribute('role');
+      }
+    }
+
+    function setLoading(v) {
+      S.loading = v;
+      urlInput.disabled = v;
+      fetchBtn.disabled = v;
+      fetchSpinner.style.display = v ? 'inline-flex' : 'none';
+      fetchLabel.textContent = v ? 'Fetching…' : 'Fetch transcript';
+    }
+
+    function setAiLoading(v) {
+      S.aiLoading = v;
+      [reconstructBtn, summarizeBtn].forEach(b => { if (!b.dataset.disabledByHealth) b.disabled = v; });
+      if (v) {
+        aiProgress.style.display = 'flex';
+        aiProgressText.textContent = S.aiProgress;
+      } else {
+        aiProgress.style.display = 'none';
+        S.aiProgress = '';
+      }
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
+      return `${m}:${String(s).padStart(2, '0')}`;
+    }
+
+    function formatElapsed(startedAt) {
+      if (!startedAt) return '';
+      const secs = Math.max(1, Math.floor((Date.now() - startedAt) / 1000));
+      return `${secs}s`;
+    }
+
+    function isValidYoutubeUrl(u) {
+      return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\/.+/.test(u.trim());
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    /* RENDER: EMPTY */
+    function renderEmpty() {
+      emptyState.style.display = 'block';
+      toolbarShell.style.display = 'none';
+      viewSwitcher.style.display = 'none';
+      transcriptCard.style.display = 'none';
+      summaryCard.style.display = 'none';
+      ttsReconstructBar.classList.remove('visible');
+      ttsSummaryBar.classList.remove('visible');
+      viewSwitcher.style.display = 'none';
+      summaryMetaBadge.style.display = 'none';
+      reconstructionMetaBadge.style.display = 'none';
+      copyReconstructionBtn.style.display = 'none';
+      copyTranscriptBtn.style.display = '';   // reset for next transcript load
+      S.activeView = 'transcript';
+      syncViewSwitcher();
+    }
+
+    /* VIEW SWITCHER */
+    function syncViewSwitcher() {
+      // Enable/disable tabs based on available content
+      viewReconstruction.disabled = !S.reconstructedText;
+      viewSummary.disabled        = !S.summaryText;
+      viewReconstruction.title = viewReconstruction.disabled
+        ? 'Generate AI reconstruction first'
+        : 'View AI reconstruction';
+      viewSummary.title = viewSummary.disabled
+        ? 'Generate AI summary first'
+        : 'View AI summary';
+
+      // aria-pressed reflects activeView
+      viewTranscript.setAttribute('aria-pressed', S.activeView === 'transcript'     ? 'true' : 'false');
+      viewReconstruction.setAttribute('aria-pressed', S.activeView === 'reconstruction' ? 'true' : 'false');
+      viewSummary.setAttribute('aria-pressed', S.activeView === 'summary'        ? 'true' : 'false');
+
+      // aria-labelledby on the visible card
+      transcriptCard.setAttribute('aria-labelledby', 'viewTranscript');
+      summaryCard.setAttribute('aria-labelledby', 'viewSummary');
+    }
+
+    function setActiveView(v) {
+      if (!['transcript', 'reconstruction', 'summary'].includes(v)) return;
+      // Guard: if user clicks a disabled tab, ignore (shouldn't happen — button is disabled — but defense in depth).
+      if (v === 'reconstruction' && !S.reconstructedText) return;
+      if (v === 'summary'        && !S.summaryText) return;
+
+      S.activeView = v;
+
+      // Fix §duplicate-copy-buttons: only one copy button visible at a time
+      copyTranscriptBtn.style.display    = (v === 'transcript') ? '' : 'none';
+      copyReconstructionBtn.style.display = (v === 'reconstruction') ? '' : 'none';
+
+      renderActiveView();
+      syncViewSwitcher();
+    }
+
+    function renderActiveView() {
+      // Brief §3 / §16: ONE main content panel. Hide inactive card.
+      const v = S.activeView;
+
+      // TTS bar visibility: shown only for the active view
+      ttsReconstructBar.classList.remove('visible');
+      ttsSummaryBar.classList.remove('visible');
+
+      if (v === 'summary') {
+        // Summary owns the panel
+        transcriptCard.style.display = 'none';
+        transcriptCard.setAttribute('aria-hidden', 'true');
+        transcriptCard.setAttribute('inert', '');
+        summaryCard.style.display = 'block';
+        summaryCard.removeAttribute('aria-hidden');
+        summaryCard.removeAttribute('inert');
+        if (S.summaryText) {
+          ttsSummaryBar.classList.add('visible');
+        }
+      } else {
+        // transcript | reconstruction share transcriptCard; summaryCard hidden
+        summaryCard.style.display = 'none';
+        summaryCard.setAttribute('aria-hidden', 'true');
+        summaryCard.setAttribute('inert', '');
+        transcriptCard.style.display = 'block';
+        transcriptCard.removeAttribute('aria-hidden');
+        transcriptCard.removeAttribute('inert');
+        if (v === 'reconstruction' && S.reconstructedText) {
+          showReconstructed();
+          ttsReconstructBar.classList.add('visible');
+        } else {
+          showRaw();
+        }
+      }
+    }
+
+    /* RENDER: TRANSCRIPT CARD */
+    function renderTranscript() {
+      if (!S.transcriptData) return;
+      emptyState.style.display = 'none';
+      toolbarShell.style.display = 'flex';
+      // transcriptCard visibility is owned by renderActiveView now; ensure visible when active
+      if (S.activeView !== 'summary') {
+        transcriptCard.style.display = 'block';
+        transcriptCard.removeAttribute('aria-hidden');
+        transcriptCard.removeAttribute('inert');
+      }
+      viewSwitcher.style.display = 'inline-flex';
+
+      const td = S.transcriptData;
+      const snippets = td.snippets || [];
+      const totalChars = snippets.reduce((acc, s) => acc + (s.text || '').length, 0);
+
+      langBadge.textContent = td.lang || '—';
+      charBadge.textContent = `${totalChars.toLocaleString('en-US')} chars`;
+
+      transcriptRaw.innerHTML = snippets.length
+        ? snippets.map((s, i) => `
+          <div class="seg" data-idx="${i}" role="button" tabindex="0" aria-label="Segment ${i+1}">
+            <span class="ts">${formatTime(s.start)}</span>
+            <span class="tx">${escapeHtml(s.text || '')}</span>
+          </div>`).join('')
+        : '<p style="color:var(--muted-2);padding:0.5rem 0.75rem;font-size:0.875rem;">No segments available.</p>';
+
+      if (S.reconstructedText) {
+        transcriptReconstructed.innerHTML = md(S.reconstructedText);
+      }
+      // copyTranscriptBtn / copyReconstructionBtn visibility is now managed by setActiveView
+      renderReconstructionMeta();
+      syncViewSwitcher();
+    }
+
+    function showRaw() {
+      transcriptRaw.style.display = 'block';
+      transcriptReconstructed.style.display = 'none';
+    }
+
+    function showReconstructed() {
+      transcriptRaw.style.display = 'none';
+      transcriptReconstructed.style.display = 'block';
+    }
+
+    /* SAFE MARKDOWN RENDERER (brief §15)
+       Pipeline: escapeHtml → block tokens (code fence, heading, list, paragraph)
+       → inline transforms (inline code, bold, italic, link). No
+       dangerouslySetInnerHTML without sanitization. Works for both summary
+       and reconstruction output. */
+    function md(text) {
+      if (!text) return '';
+      const esc = s => String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+      // Apply inline transforms to already-escaped HTML strings.
+      // Order matters: code first (so backticks inside bold aren't parsed),
+      // then bold, then italic, then links.
+      const inline = (s) => {
+        let out = s;
+        // inline code: `code`
+        out = out.replace(/`([^`\n]+)`/g, (_, c) => `<code>${c}</code>`);
+        // bold: **text** or __text__
+        out = out.replace(/\*\*([^*\n]+)\*\*/g, (_, c) => `<strong>${c}</strong>`);
+        out = out.replace(/__([^_\n]+)__/g,        (_, c) => `<strong>${c}</strong>`);
+        // italic: *text* or _text_ (single, not adjacent to alphanumeric)
+        out = out.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+        out = out.replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+        // links: [text](http(s)://url)
+        out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+          (_, t, u) => `<a href="${u}" rel="noopener noreferrer" target="_blank">${t}</a>`);
+        return out;
+      };
+
+      const lines = String(text).split('\n');
+      const blocks = [];
+      let i = 0;
+      while (i < lines.length) {
+        const raw = lines[i];
+        const line = raw.replace(/\s+$/, '');
+
+        // fenced code block
+        if (/^```/.test(line)) {
+          const lang = line.replace(/^```/, '').trim();
+          const buf = [];
+          i++;
+          while (i < lines.length && !/^```/.test(lines[i].replace(/\s+$/, ''))) {
+            buf.push(lines[i]); i++;
+          }
+          i++; // skip closing fence
+          const cls = lang ? ` class="language-${esc(lang)}"` : '';
+          blocks.push(`<pre><code${cls}>${esc(buf.join('\n'))}</code></pre>`);
+          continue;
+        }
+
+        // heading (###, ##, #)
+        const hMatch = /^(#{1,3})\s+(.+)$/.exec(line);
+        if (hMatch) {
+          const lvl = hMatch[1].length;
+          blocks.push(`<h${lvl}>${inline(esc(hMatch[2]))}</h${lvl}>`);
+          i++; continue;
+        }
+
+        // unordered list (-, *, +)
+        if (/^[-*+]\s+/.test(line)) {
+          const items = [];
+          while (i < lines.length && /^[-*+]\s+/.test(lines[i].replace(/\s+$/, ''))) {
+            items.push(lines[i].replace(/^[-*+]\s+/, ''));
+            i++;
+          }
+          blocks.push('<ul>' + items.map(it => `<li>${inline(esc(it))}</li>`).join('') + '</ul>');
+          continue;
+        }
+
+        // ordered list (1. 2. ...)
+        if (/^\d+\.\s+/.test(line)) {
+          const items = [];
+          while (i < lines.length && /^\d+\.\s+/.test(lines[i].replace(/\s+$/, ''))) {
+            items.push(lines[i].replace(/^\d+\.\s+/, ''));
+            i++;
+          }
+          blocks.push('<ol>' + items.map(it => `<li>${inline(esc(it))}</li>`).join('') + '</ol>');
+          continue;
+        }
+
+        // blank line → break between blocks
+        if (!line.trim()) { i++; continue; }
+
+        // paragraph: collect consecutive non-blank, non-special lines
+        const para = [];
+        while (i < lines.length) {
+          const l = lines[i].replace(/\s+$/, '');
+          if (!l.trim()) break;
+          if (/^```/.test(l)) break;
+          if (/^#{1,3}\s+/.test(l)) break;
+          if (/^[-*+]\s+/.test(l)) break;
+          if (/^\d+\.\s+/.test(l)) break;
+          para.push(l);
+          i++;
+        }
+        if (para.length) {
+          blocks.push(`<p>${inline(esc(para.join(' ')))}</p>`);
+        }
+      }
+      return blocks.join('\n');
+    }
+
+    /* METADATA BADGES (brief §17) — real data only */
+    function buildMetaText(meta) {
+      // meta may be null/undefined or { model, elapsedMs, tokens }
+      if (!meta) return '';
+      const parts = ['Generated'];
+      if (meta.model) {
+        // Show only short model identifier (last path segment if it's a slug)
+        const short = String(meta.model).split('/').pop();
+        parts.push(short);
+      }
+      if (typeof meta.elapsedMs === 'number' && meta.elapsedMs >= 0) {
+        const secs = (meta.elapsedMs / 1000).toFixed(1);
+        parts.push(`${secs}s`);
+      }
+      if (typeof meta.tokens === 'number' && meta.tokens > 0) {
+        parts.push(`${meta.tokens.toLocaleString('en-US')} tokens`);
+      }
+      // If only "Generated" → omit badge entirely (return empty string).
+      if (parts.length === 1) return '';
+      return parts.join(' · ');
+    }
+
+    function renderSummaryMeta() {
+      const text = buildMetaText(S.lastAiMeta);
+      if (!text) {
+        summaryMetaBadge.style.display = 'none';
+        summaryMetaBadge.textContent = '';
+      } else {
+        summaryMetaBadge.style.display = 'inline-flex';
+        summaryMetaBadge.textContent = text;
+      }
+    }
+
+    function renderReconstructionMeta() {
+      const text = buildMetaText(S.lastReconstructionMeta);
+      if (!text) {
+        reconstructionMetaBadge.style.display = 'none';
+        reconstructionMetaBadge.textContent = '';
+      } else {
+        reconstructionMetaBadge.style.display = 'inline-flex';
+        reconstructionMetaBadge.textContent = text;
+      }
+    }
+
+    /* RENDER: SUMMARY */
+    function renderSummary() {
+      if (!S.summaryText) {
+        // Hide summary without touching viewSwitcher — setActiveView decides visibility.
+        return;
+      }
+      summaryBody.innerHTML = md(S.summaryText);
+      summaryFooter.style.display = 'flex';
+      summaryCharCount.textContent = `${S.summaryText.length.toLocaleString('en-US')} chars`;
+      renderSummaryMeta();
+      // Re-apply activeView so summaryCard becomes visible when summary is the active view.
+      renderActiveView();
+      syncViewSwitcher();
+    }
+
+    /* API: FETCH */
+    async function doFetch() {
+      if (!S.url.trim()) { setError('Paste a YouTube video link.'); return; }
+      if (!isValidYoutubeUrl(S.url)) { setError('That does not look like a YouTube link. Paste a valid video URL.'); return; }
+      setError('');
+      setLoading(true);
+
+      try {
+        const res = await fetch(`/api/transcript?url=${encodeURIComponent(S.url.trim())}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to fetch transcript.');
+        S.transcriptData = data;
+        S.reconstructedText = '';
+        S.summaryText = '';
+        setLoading(false);
+        setActiveView('transcript');  // drives copy button visibility + render
+        renderTranscript();           // populate transcriptBody + toolbar + viewSwitcher
+        renderSummary();
+        sessionStorage.setItem('ytt_url', S.url);
+      } catch (err) {
+        setLoading(false);
+        validateUrl();
+        setError(err.message || 'Could not fetch the transcript. Check the link and try again.');
+      }
+    }
+
+    /* API: TRANSFORM */
+    async function doTransform(type, mode, targetLang) {
+      if (!S.transcriptData) return;
+      const startAt = Date.now();
+      setAiLoading(true);
+      S.aiProgress = type === 'reconstruct'
+        ? 'AI is reconstructing the text…'
+        : 'Generating summary…';
+      aiProgressText.textContent = S.aiProgress;
+
+      try {
+        // Brief §7: type is one of 'reconstruct' | 'summarize'. Never
+        // 'reconstruction' or 'summary' in the request payload — those names
+        // belong to UI views only.
+        const res = await fetch('/api/transform', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            snippets: S.transcriptData.snippets,
+            type,
+            mode,
+            targetLang: targetLang || null,
+            title: S.transcriptData.title || ''
+          })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          // Surface 429 daily-limit error with contact info
+          if (res.status === 429) {
+            throw new Error(data.message || data.error || 'Daily demo limit reached.');
+          }
+          // Distinguish LLM provider errors from transcript fetch errors
+          const providerMsg = data?.error || data?.message || `LLM provider error (HTTP ${res.status}).`;
+          throw new Error(providerMsg);
+        }
+        // Capture metadata for badge (brief §17). elapsedMs from server is
+        // authoritative (server measures around the chat call); client startAt
+        // is a fallback if the server omitted it.
+        const meta = {
+          model: data.model || null,
+          elapsedMs: typeof data.elapsedMs === 'number' ? data.elapsedMs : (Date.now() - startAt),
+          tokens: typeof data.tokens === 'number' ? data.tokens : null,
+        };
+        if (type === 'reconstruct') {
+          S.reconstructedText = data.reconstructed;
+          S.lastReconstructionMeta = meta;
+          // Keep any existing summary available in the AI Summary tab.
+          // The top-level view switcher is the source of truth for choosing
+          // between Transcript / AI Reconstruction / AI Summary.
+          setActiveView('reconstruction');
+        } else {
+          S.summaryText = data.summary;
+          S.lastAiMeta = meta;
+          // Keep any existing reconstruction available in the AI Reconstruction tab.
+          // New transcript fetch/reset is the only flow that clears both outputs.
+          setActiveView('summary');
+        }
+        renderTranscript();
+        renderSummary();
+        setAiLoading(false);
+      } catch (err) {
+        setAiLoading(false);
+        validateUrl();
+        setError(err.message || 'Model error. Try again or check the provider.');
+        // Trigger health re-probe on error — backend may have become unavailable.
+        try { probeHealth(); } catch (_) {}
+      }
+    }
+
+    /* EXPORT */
+    function exportTxt() {
+      const text = S.reconstructedText || S.transcriptData?.snippets?.map(s => s.text).join('\n') || '';
+      downloadBlob(text, 'transcript.txt', 'text/plain;charset=utf-8');
+      showToast('Exported as TXT');
+    }
+
+    function exportSrt() {
+      if (!S.transcriptData?.snippets) return;
+      const srt = S.transcriptData.snippets.map((s, i) => {
+        const start = toSrtTime(s.start), end = toSrtTime(s.start + (s.duration || 3));
+        return `${i+1}\n${start} --> ${end}\n${s.text}\n`;
+      }).join('\n');
+      downloadBlob(srt, 'transcript.srt', 'text/plain;charset=utf-8');
+      showToast('Exported as SRT');
+    }
+
+    function exportMd() {
+      const lines = [`# ${S.transcriptData?.title || 'Transcript'}`, '', '## Raw transcript', ''];
+      (S.transcriptData?.snippets || []).forEach(s => {
+        lines.push(`[${formatTime(s.start)}] ${s.text}`);
+      });
+      if (S.reconstructedText) { lines.push('', '## AI reconstruction', '', S.reconstructedText); }
+      if (S.summaryText) { lines.push('', '## Summary', '', S.summaryText); }
+      downloadBlob(lines.join('\n'), 'transcript.md', 'text/markdown;charset=utf-8');
+      showToast('Exported as Markdown');
+    }
+
+    function exportPdf() {
+      const content = [
+        S.transcriptData?.title || 'Transcript', '',
+        S.reconstructedText || S.transcriptData?.snippets?.map(s => s.text).join('\n\n') || '', '',
+        '---', '', S.summaryText || ''
+      ].join('\n');
+      const w = window.open('', '_blank');
+      if (w) {
+        w.document.write(`<html><head><title>${S.transcriptData?.title || 'Transcript'}</title>
+          <style>body{font-family:Inter,Arial,sans-serif;padding:2rem;max-width:720px;margin:0 auto;line-height:1.7;white-space:pre-wrap;} h1{font-size:1.25rem;margin-bottom:1rem;}</style>
+          </head><body><h1>${escapeHtml(S.transcriptData?.title || '')}</h1><p>${escapeHtml(content)}</p></body></html>`);
+        w.document.close();
+        w.print();
+        showToast('Print to PDF opened');
+      }
+    }
+
+    function downloadBlob(content, filename, mime) {
+      const blob = new Blob([content], { type: mime });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function toSrtTime(sec) {
+      const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = Math.floor(sec%60);
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')},000`;
+    }
+
+    /* COPY */
+    async function copyText(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast('Copied to clipboard');
+      } catch(e) {
+        showToast('Copy failed');
+      }
+    }
+
+    /* DIALOG (focus trap) */
+    let dialogAction = null;
+    let lastFocus = null;
+
+    function getFocusable(root) {
+      return Array.from(root.querySelectorAll(
+        'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      )).filter(el => el.offsetParent !== null);
+    }
+
+    function trapFocus(e, root) {
+      if (e.key !== 'Tab') return;
+      const items = getFocusable(root);
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { last.focus(); e.preventDefault(); }
+      else if (!e.shiftKey && document.activeElement === last) { first.focus(); e.preventDefault(); }
+    }
+
+    function openOverlay({ overlay, panel, firstFocus }) {
+      lastFocus = document.activeElement;
+      if (overlay) { overlay.hidden = false; overlay.classList.add('open'); }
+      panel.hidden = false;
+      requestAnimationFrame(() => panel.classList.add('open'));
+      document.body.style.overflow = 'hidden';
+      setTimeout(() => (firstFocus || panel).focus(), 30);
+    }
+
+    function closeOverlay({ overlay, panel }) {
+      panel.classList.remove('open');
+      if (overlay) overlay.classList.remove('open');
+      document.body.style.overflow = '';
+      setTimeout(() => { panel.hidden = true; if (overlay) overlay.hidden = true; }, 280);
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+
+    function openLangDialog(action) {
+      dialogAction = action;
+      openOverlay({ overlay: null, panel: langDialog, firstFocus: $('langOriginal') });
+    }
+
+    function closeLangDialog() {
+      closeOverlay({ overlay: null, panel: langDialog });
+      dialogAction = null;
+    }
+
+    /* TTS LANG (per-bar) */
+    // Per-bar state
+    const ttsBars = {
+      reconstruction: { lang: 'pl', bar: ttsReconstructBar, audio: $('ttsReconstructAudio'),
+        generateBtn: $('ttsReconstructGenerateBtn'), downloadBtn: $('ttsReconstructDownloadBtn'),
+        status: $('ttsReconstructStatus'), langBtns: ttsReconstructBar.querySelectorAll('.tts-lang-btn') },
+      summary:    { lang: 'pl', bar: ttsSummaryBar,    audio: $('ttsSummaryAudio'),
+        generateBtn: $('ttsSummaryGenerateBtn'), downloadBtn: $('ttsSummaryDownloadBtn'),
+        status: $('ttsSummaryStatus'),    langBtns: ttsSummaryBar.querySelectorAll('.tts-lang-btn') },
+    };
+
+    function attachTtsBarHandlers(type) {
+      const b = ttsBars[type];
+      b.langBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          b.langBtns.forEach(x => x.classList.remove('active'));
+          btn.classList.add('active');
+          b.lang = btn.dataset.lang;
+        });
+      });
+      b.generateBtn.addEventListener('click', () => doTtsGenerate(type));
+    }
+    attachTtsBarHandlers('reconstruction');
+    attachTtsBarHandlers('summary');
+
+    async function doTtsGenerate(type) {
+      const b = ttsBars[type];
+      const text = type === 'reconstruction' ? S.reconstructedText : S.summaryText;
+      if (!text) { b.status.textContent = 'No text available.'; return; }
+
+      b.generateBtn.disabled = true;
+      b.generateBtn.querySelector('span').textContent = 'Generating…';
+      b.audio.style.display = 'none';
+      b.downloadBtn.style.display = 'none';
+      b.status.textContent = 'Preparing audio…';
+      b.status.classList.remove('tts-error');
+
+      try {
+        const res = await fetch('/api/tts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ type, language: b.lang, text }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Generation failed.');
+        const audioUrl = data.audioUrl;
+        b.audio.src = audioUrl;
+        b.audio.style.display = '';
+        const aUrl = new URL(audioUrl, window.location.origin);
+        b.downloadBtn.href = aUrl;
+        b.downloadBtn.download = '';
+        b.downloadBtn.style.display = '';
+        b.status.textContent = `Ready · ${data.language?.toUpperCase()}`;
+        b.audio.onloadedmetadata = () => {
+          const secs = b.audio.duration;
+          if (secs > 0) b.status.textContent = `${data.language?.toUpperCase()} · ${Math.round(secs)}s`;
+        };
+      } catch (err) {
+        b.status.textContent = err.message;
+        b.status.classList.add('tts-error');
+      } finally {
+        b.generateBtn.disabled = false;
+        b.generateBtn.querySelector('span').textContent = 'Generate audio';
+      }
+    }
+
+    /* EVENTS */
+    /* URL validation → enable fetch button only when valid */
+    function validateUrl() {
+      const ok = isValidYoutubeUrl(urlInput.value);
+      fetchBtn.disabled = S.loading || !ok;
+      fetchBtn.setAttribute('aria-disabled', String(!ok));
+      return ok;
+    }
+    urlInput.addEventListener('input', () => { S.url = urlInput.value; validateUrl(); });
+    urlInput.addEventListener('keydown', e => { if (e.key === 'Enter' && validateUrl()) { S.url = urlInput.value; doFetch(); } });
+    fetchBtn.addEventListener('click', () => { if (validateUrl()) { S.url = urlInput.value; doFetch(); } });
+
+    viewTranscript.addEventListener('click', () => setActiveView('transcript'));
+    viewReconstruction.addEventListener('click', () => setActiveView('reconstruction'));
+    viewSummary.addEventListener('click', () => setActiveView('summary'));
+
+    reconstructBtn.addEventListener('click', () => openLangDialog('reconstruct'));
+    summarizeBtn.addEventListener('click', () => openLangDialog('summarize'));
+
+    $('langOriginal').addEventListener('click', () => { const action = dialogAction; closeLangDialog(); if (action) doTransform(action, 'original'); });
+    $('langDe').addEventListener('click', () => { const action = dialogAction; closeLangDialog(); if (action) doTransform(action, 'translate', 'de'); });
+    $('langPl').addEventListener('click', () => { const action = dialogAction; closeLangDialog(); if (action) doTransform(action, 'translate', 'pl'); });
+    $('langCancel').addEventListener('click', closeLangDialog);
+    langDialog.addEventListener('click', e => { if (e.target === langDialog) closeLangDialog(); });
+
+    /* Diagnostics removed */
+
+    exportTrigger.addEventListener('click', e => {
+      e.stopPropagation();
+      exportDropdown.classList.toggle('open');
+      exportTrigger.setAttribute('aria-expanded', exportDropdown.classList.contains('open'));
+    });
+    $('exportTxt').addEventListener('click', () => { exportTxt(); exportDropdown.classList.remove('open'); });
+    $('exportSrt').addEventListener('click', () => { exportSrt(); exportDropdown.classList.remove('open'); });
+    $('exportMd').addEventListener('click', () => { exportMd(); exportDropdown.classList.remove('open'); });
+    $('exportPdf').addEventListener('click', () => { exportPdf(); exportDropdown.classList.remove('open'); });
+
+    document.addEventListener('click', () => {
+      exportDropdown.classList.remove('open');
+      exportTrigger.setAttribute('aria-expanded', 'false');
+    });
+
+    copySummaryBtn.addEventListener('click', () => copyText(S.summaryText));
+    copyTranscriptBtn.addEventListener('click', () => copyText(
+      S.transcriptData?.snippets?.map(s => s.text).join('\n') || ''
+    ));
+    copyReconstructionBtn.addEventListener('click', () => copyText(S.reconstructedText || ''));
+
+    resetBtn.addEventListener('click', () => {
+      S.url = '';
+      S.transcriptData = null;
+      S.reconstructedText = '';
+      S.summaryText = '';
+      S.lastAiMeta = null;
+      S.lastReconstructionMeta = null;
+      S.error = '';
+      S.aiLoading = false;
+      S.activeView = 'transcript';
+      urlInput.value = '';
+      setError('');
+      renderEmpty();
+      fetchBtn.disabled = true;
+      sessionStorage.removeItem('ytt_url');
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        if (langDialog.classList.contains('open')) { closeLangDialog(); e.preventDefault(); return; }
+      }
+      /* Focus trap */
+      if (e.key === 'Tab') {
+        if (langDialog.classList.contains('open')) trapFocus(e, langDialog);
+      }
+    });
+
+    /* AI STATUS STATE MACHINE (brief §8–§14)
+       4 states: 'checking' | 'online' | 'partial' | 'offline'.
+       Stale-probe protection via monotonic seq counter (Codex r5#1).
+       Feature gating: disable reconstructBtn / summarizeBtn based on
+       /api/health response.features. */
+    let probeSeq = 0;
+
+    function formatCheckedAt(iso) {
+      if (!iso) return 'never';
+      try {
+        const d = new Date(iso);
+        return d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+      } catch (_) { return 'never'; }
+    }
+
+    function buildTooltip(state, info) {
+      if (state === 'checking') return 'Checking AI backend…';
+      const provider = (info && info.provider) || 'AI backend';
+      const model    = (info && info.model)    || '—';
+      const checked  = formatCheckedAt(info && info.checkedAt);
+      const f = info && info.features;
+      if (state === 'online') {
+        return `${provider} · ${model} · reconstruct/summarize available · checked ${checked}`;
+      }
+      if (state === 'partial') {
+        const avail = [];
+        if (f && f.reconstruct) avail.push('reconstruct');
+        if (f && f.summarize)   avail.push('summarize');
+        return `${provider} · ${model} · only ${avail.join('/')} available · checked ${checked}`;
+      }
+      // offline
+      return `AI backend unavailable · reconstruct/summarize disabled · checked ${checked}`;
+    }
+
+    function applyProviderStatus(state, info) {
+      providerRing.className = `ai-ring ${state}`;
+      providerBadge.setAttribute('data-state', state);
+      if (state === 'checking') {
+        providerLabel.textContent = 'AI · checking…';
+      } else if (state === 'online') {
+        providerLabel.textContent = 'AI · online';
+      } else if (state === 'partial') {
+        providerLabel.textContent = 'AI · partial';
+      } else {
+        providerLabel.textContent = 'AI · offline';
+      }
+      providerBadge.title = buildTooltip(state, info || S.lastHealthInfo);
+    }
+
+    function mapHealthToState(data) {
+      // Offline / unavailable / both features false → offline.
+      if (!data || data.status !== 'ok' || !(data.providerDetails && data.providerDetails.ok)) return 'offline';
+      const f = (data.features || {});
+      const reconstruct = !!f.reconstruct;
+      const summarize   = !!f.summarize;
+      if (reconstruct && summarize) return 'online';
+      if (reconstruct || summarize) return 'partial';
+      return 'offline';
+    }
+
+    async function probeHealth() {
+      const mySeq = ++probeSeq;
+      applyProviderStatus('checking');
+      try {
+        const ctrl = new AbortController();
+        const tid = setTimeout(() => ctrl.abort(), 4000);
+        let res;
+        try {
+          res = await fetch('/api/health', { signal: ctrl.signal, cache: 'no-store' });
+        } finally {
+          clearTimeout(tid);
+        }
+        if (mySeq !== probeSeq) return;        // stale: discard before parse
+        const data = await res.json().catch(() => ({}));
+        if (mySeq !== probeSeq) return;        // stale after parse
+        if (!res.ok) {
+          applyProviderStatus('offline', { error: 'HTTP ' + res.status });
+          applyFeatureGating(false, false);
+          return;
+        }
+        S.lastHealthInfo = data;
+        applyProviderStatus(mapHealthToState(data), data);
+        applyFeatureGating(!!(data.features && data.features.reconstruct), !!(data.features && data.features.summarize));
+      } catch (err) {
+        if (mySeq !== probeSeq) return;        // stale: discard failure
+        applyProviderStatus('offline', { error: String((err && err.message) || err) });
+        applyFeatureGating(false, false);
+      }
+    }
+
+    function applyFeatureGating(canReconstruct, canSummarize) {
+      // If the backend says a feature is unavailable, disable the corresponding
+      // button and remember it via dataset.disabledByHealth so setAiLoading does
+      // not re-enable it during a transform request.
+      if (!canReconstruct) {
+        reconstructBtn.disabled = true;
+        reconstructBtn.dataset.disabledByHealth = '1';
+        reconstructBtn.title = 'AI reconstruction is unavailable — backend reports the feature as disabled.';
+      } else {
+        // Only re-enable when not currently loading.
+        if (!S.aiLoading) reconstructBtn.disabled = false;
+        delete reconstructBtn.dataset.disabledByHealth;
+        reconstructBtn.title = '';
+      }
+      if (!canSummarize) {
+        summarizeBtn.disabled = true;
+        summarizeBtn.dataset.disabledByHealth = '1';
+        summarizeBtn.title = 'AI summary is unavailable — backend reports the feature as disabled.';
+      } else {
+        if (!S.aiLoading) summarizeBtn.disabled = false;
+        delete summarizeBtn.dataset.disabledByHealth;
+        summarizeBtn.title = '';
+      }
+    }
+
+    /* INIT */
+    const savedUrl = sessionStorage.getItem('ytt_url');
+    if (savedUrl) { urlInput.value = savedUrl; S.url = savedUrl; }
+    fetchBtn.disabled = !validateUrl();
+
+    // Initial health probe + click-to-recheck on the badge.
+    providerBadge.addEventListener('click', (e) => { e.stopPropagation(); probeHealth(); });
+    providerBadge.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); probeHealth(); } });
+    probeHealth();
+
+    // Periodic re-probe every 60s. Cleanup on unload so we don't leak timers.
+    let probeTimer = setInterval(probeHealth, 60000);
+    window.addEventListener('beforeunload', () => { if (probeTimer) { clearInterval(probeTimer); probeTimer = null; } });
+  })();
+  </script>
+</body>
+</html>

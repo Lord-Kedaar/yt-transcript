@@ -7,6 +7,7 @@
   "scripts": {
     "start": "npm run build && node server.js",
     "start:direct": "node server.js",
+    "start:prod": "node server.js",
     "build": "node scripts/build.js && npm --prefix client run build",
     "dev": "node scripts/dev-disabled.mjs",
     "dev:client": "node scripts/dev-disabled.mjs",
@@ -16,9 +17,9 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
-    "cors": "^2.8.5",
+    "cors": "^2.8.6",
     "dotenv": "^16.4.5",
-    "express": "^4.21.2",
+    "express": "^4.22.2",
     "express-rate-limit": "^8.5.2",
     "he": "^1.2.0",
     "youtube-transcript-plus": "^2.0.0"
