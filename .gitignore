@@ -20,6 +20,12 @@ client/public/build-version.json
 
 # Backups
 *.backup-*
+backups/
+.audit/
+
+# Operational report artifacts (kept in docs/archive/<date>/ if relevant)
+METRICUS_*_REPORT.md
+YTTRANSCRIPT_*_REPORT.md
 
 logs/
 
