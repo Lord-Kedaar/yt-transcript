@@ -1,5 +1,21 @@
 # STATE_LOG — ytTranscript
 
+## 2026-06-25 — ytTranscript — cleanup phase 1: Lenovo runtime imported to Mac audit branch
+
+- **Co:** Utworzono branch `audit/import-lenovo-production-20260625` i zaimportowano produkcyjne pliki Lenovo do Mac working tree: `server.js`, root `index.html`, `package.json`, `package-lock.json`, `.env.example`, `DEPLOYMENT_LENOVO_LINUX.md`. Surowy snapshot Lenovo zapisano pod `.audit/lenovo-snapshot-20260625/`. Nie czyszczono jeszcze produkcji; nie kasowano backupów.
+- **Plik:** `server.js`, `index.html`, `package.json`, `package-lock.json`, `.env.example`, `DEPLOYMENT_LENOVO_LINUX.md`, `.audit/lenovo-snapshot-20260625/*`, `METRICUS_YTTRANSCRIPT_REPO_RUNTIME_DRIFT_AUDIT_20260625.md`
+- **Build:** `node --check server.js` OK; `npm --prefix client run test:summary-parser` OK; `npm --prefix client run test:pdf-pagination` OK; `npm run build` OK (Vite build 1.32s, chunk warning only).
+- **Preview:** Local audit preview `PORT=4500 node server.js`: `GET /` 200, `GET /api/health` 200, TTS `type:"reconstruction"` → `audioUrl`, `GET /api/audio/...wav` → 200 57900 B `audio/wav`. Lenovo production untouched and remains running PID 4054067.
+- **Raport:** `METRICUS_YTTRANSCRIPT_REPO_RUNTIME_DRIFT_AUDIT_20260625.md`
+
+## 2026-06-25 — ytTranscript — repo/runtime drift audit Mac vs Lenovo
+
+- **Co:** Utworzono audyt rozjazdu między Mac git repo (`main`, `ded7006`) a Lenovo production (`/srv/storage/AI_Projects/yt-transcript`). Ustalenia: Lenovo production nie jest git repo; serwuje root `index.html`; Mac `main` serwuje `client/dist/index.html`; Lenovo `server.js` ma +409/-46 względem Mac i zawiera `/api/ai-limit-status`, `aiDailyLimitGuard`, `ALLOWED_TTS_TYPES` oraz aktywny TTS prep. Raport zawiera klasyfikację bałaganu i bezpieczny 4-fazowy cleanup plan.
+- **Plik:** `METRICUS_YTTRANSCRIPT_REPO_RUNTIME_DRIFT_AUDIT_20260625.md`
+- **Build:** N/A (audyt dokumentacyjny; brak zmian w runtime/code)
+- **Preview:** Lenovo `GET /api/health` 200, `GET /` 200; aktywny proces `node server.js` PID 4054067 cwd `/srv/storage/AI_Projects/yt-transcript`.
+- **Raport:** `METRICUS_YTTRANSCRIPT_REPO_RUNTIME_DRIFT_AUDIT_20260625.md`
+
 ## 2026-06-20 · Finalna konfiguracja providerów (po testach manualnych)
 
 ### Decyzja
@@ -104,3 +120,19 @@ curl http://127.0.0.1:4000/api/health
 - Na Lenovo-Serwer: trzeba wystawić przez Tailscale (TODO: osobne zadanie)
 - `buildOmlxProvider()` zachowuje pełną logikę fallback models (nie zmieniona)
 - Dla nowego providera: wystarczy dodać `build<Xxx>Provider()` i dopisać do `buildLlmProvider()`
+
+---
+
+## 2026-06-25 — ytTranscript — reconciliation: import Lenovo runtime + cleanup of staging artifacts
+
+- **Co:** Na branchu `reconciliation/lenovo-runtime-20260625` zatwierdzono kanoniczne commity: (1) `feat(import)` — `server.js`, root `index.html`, `package*.json`, `.env.example` z Lenovo production; (2) `docs` — `README.md`, `docs/LOCAL_SETUP.md`, `DEPLOYMENT_LENOVO_LINUX.md` dopasowane do produkcyjnej architektury (port 4002, NFS path, root `index.html`, single-file UI), plus `.gitignore` dla `backups/`, `.audit/`, `METRICUS_*_REPORT.md`, `YTTRANSCRIPT_*_REPORT.md`; (3) `chore(archive)` — raporty operacyjne i snapshot `2026-06-21-before-task1` przeniesione do `docs/archive/` (z `docs/archive/*/.gitignore` chroniącym `.env`); (4) `docs(audit)` — kanoniczny raport z audytu.
+- **Plik:** `server.js`, `index.html`, `package.json`, `package-lock.json`, `.env.example`, `README.md`, `docs/LOCAL_SETUP.md`, `DEPLOYMENT_LENOVO_LINUX.md`, `.gitignore`, `docs/archive/**`, `METRICUS_YTTRANSCRIPT_REPO_RUNTIME_DRIFT_AUDIT_20260625.md`
+- **Build:** `node --check server.js` OK; `npm --prefix client run test:summary-parser` OK; `npm --prefix client run test:pdf-pagination` OK; `npm run build` OK (Vite build 1.32s, chunk warning only — Vite jest pomostowo, runtime root `index.html` samodzielny).
+- **Preview:** Local `PORT=4500 node server.js` po imporcie: `GET /` 200, `GET /api/health` 200, TTS `type:"reconstruction"` → `audioUrl`, audio GET 200 `audio/wav`. Lenovo production `/api/health` 200, `/` 200, PID 4054067 nadal działa (serwer czyta pliki per-request, runtime root wyczyszczony).
+- **Raport:** `METRICUS_YTTRANSCRIPT_REPO_RUNTIME_DRIFT_AUDIT_20260625.md`
+
+### Lenovo production cleanup (B)
+- **Co:** Przeniesiono poza runtime root do `/srv/storage/AI_Projects/_archive/yt-transcript/<UTC-ts>-cleanup/` wszystkie `*.bak-*`, `*.backup-*`, `.env.backup-*`, `.write-test`, `server.log`, `manage.sh.bak.*`, `start-frontend.sh.bak.*` oraz katalog `client/` (Vite fallback assets).
+- **Backup:** `/srv/storage/AI_Projects/_archive/yt-transcript/20260625T105940Z/yt-transcript-runtime.tgz` (450 KB)
+- **W runtime root zostały:** `CHANGELOG.md`, `DEPLOYMENT_LENOVO_LINUX.md`, `.env`, `.env.example`, `index.html`, `manage.sh`, `package.json`, `package-lock.json`, `server.js`, `start-frontend.sh`, `node_modules/`, `.gitignore`.
+- **Walidacja:** `GET /api/health` 200, `GET /` 200 po cleanupie; proces `node server.js` PID 4054067 ciągle aktywny.
