@@ -290,6 +290,34 @@ const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504, 529])
 app.disable('x-powered-by');
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json({ limit: '16mb' }));
+// Whitelisted favicon handler: serves ONLY the named favicon assets
+// from the repo root with a 200 + immutable cache. Required because
+// the root /favicon.ico etc. would otherwise 404 (no general
+// express.static of __dirname). Whitelist is exact-match against
+// req.path so it cannot be abused as a directory listing.
+const FAVICON_ASSETS = new Set([
+  'favicon.ico',
+  'favicon-light.svg',
+  'favicon-dark.svg',
+  'apple-touch-icon.png',
+  'favicon-16x16.png',
+  'favicon-32x32.png',
+  'favicon-48x48.png',
+  'favicon-64x64.png',
+  'favicon-192x192.png',
+  'favicon-512x512.png',
+]);
+app.get(['/favicon.ico', '/favicon-light.svg', '/favicon-dark.svg', '/apple-touch-icon.png', '/favicon-16x16.png', '/favicon-32x32.png', '/favicon-48x48.png', '/favicon-64x64.png', '/favicon-192x192.png', '/favicon-512x512.png'], (req, res) => {
+  const name = req.path.slice(1);
+  // Express only routes these 10 exact paths here, so name is constrained
+  // to FAVICON_ASSETS. Re-check is defence-in-depth against any future
+  // refactor that loosens the matching.
+  if (!FAVICON_ASSETS.has(name)) {
+    return res.status(404).end();
+  }
+  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+  res.sendFile(path.join(__dirname, name));
+});
 // Serve static assets from build output
 app.use(
   '/assets',

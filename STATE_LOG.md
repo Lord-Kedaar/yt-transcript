@@ -1,5 +1,15 @@
 # STATE_LOG — ytTranscript
 
+## 2026-07-07 — ytTranscript — chore/update-favicons: favicon + Apple touch icon + whitelisted asset handler
+
+- **Co:** Dodano favicons i Apple touch icon z paczki `favicon_pack_portfolio_projects_v2/yttranscript/` do repo root (10 plików obok root `index.html`): `favicon.ico`, `favicon-light.svg`, `favicon-dark.svg`, `apple-touch-icon.png`, `favicon-{16,32,48,64,192,512}.png`. W `index.html` wstawione tagi `<link rel="icon">` z media-query dark/light oraz fallback `.ico` i `<link rel="apple-touch-icon">`. W `server.js` dodany whitelist handler routujący wyłącznie 10 nazw assetów przez `res.sendFile` z `__dirname` (obrona: `FAVICON_ASSETS` Set re-check wewnątrz handlera dla defence-in-depth).
+- **Plik:** `favicon.ico`, `favicon-light.svg`, `favicon-dark.svg`, `apple-touch-icon.png`, `favicon-{16,32,48,64,192,512}.png` (nowe, root repo), `index.html` (modified, `<head>` dodane tagi), `server.js` (modified, dodany whitelist middleware po `app.use(cors(...))`, przed `/assets` static).
+- **Build:** brak — root `index.html` serwowany bezpośrednio, brak bundler. Express serwuje assety z `__dirname` po zaktualizowanym handlerze.
+- **Preview:** `node server.js` lokalnie na `127.0.0.1:4002`, każda z 10 nazw zwróciła `HTTP 200` z poprawnym `Content-Type` i rozmiarem odpowiadającym paczce.
+- **Ryzyko:** Whitelist jest zamknięta — żadna inna ścieżka nie jest serwowana przez ten handler. Ścieżka `app.use((req, res) => { ... 404 })` na końcu pliku nadal łapie wszystko inne, więc żaden path traversal nie jest możliwy.
+- **Dell:** Po deploy na Lenovo Server wymagany jest tylko `node server.js` (process zarządzany ręcznie). `client/dist/` jest nienaruszony; nie ma żadnych zmian bundler-side. Wpływ na lenovo runtime: restart Node, by zaczytać nowy `server.js`.
+- **Raport:** `reports/yt-transcript-favicons-2026-07-07.md` (do utworzenia, jeśli potrzebny).
+
 ## 2026-06-25 — ytTranscript — cleanup phase 1: Lenovo runtime imported to Mac audit branch
 
 - **Co:** Utworzono branch `audit/import-lenovo-production-20260625` i zaimportowano produkcyjne pliki Lenovo do Mac working tree: `server.js`, root `index.html`, `package.json`, `package-lock.json`, `.env.example`, `DEPLOYMENT_LENOVO_LINUX.md`. Surowy snapshot Lenovo zapisano pod `.audit/lenovo-snapshot-20260625/`. Nie czyszczono jeszcze produkcji; nie kasowano backupów.
