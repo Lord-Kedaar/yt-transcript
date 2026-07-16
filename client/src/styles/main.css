@@ -1177,3 +1177,73 @@ body {
   color: var(--text-primary);
   font-size: 0.95rem;
 }
+
+/* ===== Demo Notice Modal ===== */
+.demo-notice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  animation: demoNoticeFadeIn 0.3s ease;
+}
+
+@keyframes demoNoticeFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.demo-notice-modal {
+  background: var(--bg-secondary);
+  border: 1px solid #f59e0b;
+  border-radius: var(--radius-md);
+  width: 100%;
+  max-width: 520px;
+  padding: 1.75rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+  animation: demoNoticeSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes demoNoticeSlideIn {
+  from { opacity: 0; transform: translateY(15px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.demo-notice-modal h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #fbbf24;
+  margin-bottom: 0.75rem;
+}
+
+.demo-notice-text {
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  margin-bottom: 1.25rem;
+}
+
+.demo-notice-ok {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.demo-notice-ok:hover {
+  background: var(--accent-hover);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+}
+
+.demo-notice-ok:active {
+  transform: translateY(1px);
+}
