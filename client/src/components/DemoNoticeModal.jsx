@@ -15,9 +15,13 @@ async function hashString(text) {
 
 // Get IP hash from localStorage or fetch fresh
 async function getIpHash() {
-  // Try to get from localStorage first
-  const cached = localStorage.getItem(IP_HASH_KEY);
-  if (cached) return cached;
+  // Try to get from localStorage first (may throw in Safari Private mode)
+  try {
+    const cached = localStorage.getItem(IP_HASH_KEY);
+    if (cached) return cached;
+  } catch {
+    // localStorage unavailable — proceed to fetch fresh
+  }
 
   try {
     // Fetch IP from a public service
@@ -25,7 +29,11 @@ async function getIpHash() {
     const data = await response.json();
     const ip = data.ip;
     const hash = await hashString(ip);
-    localStorage.setItem(IP_HASH_KEY, hash);
+    try {
+      localStorage.setItem(IP_HASH_KEY, hash);
+    } catch {
+      // localStorage unavailable — skip caching
+    }
     return hash;
   } catch (err) {
     console.warn('Failed to fetch IP hash', err);
@@ -38,17 +46,27 @@ export default function DemoNoticeModal() {
   const [ipHash, setIpHash] = useState('');
 
   useEffect(() => {
-    // Check localStorage — if already dismissed, don't show again
-    const dismissed = localStorage.getItem(NOTICE_DISMISSED_KEY);
+    // Check localStorage — if already dismissed, don't show again (may throw in Safari Private mode)
+    let dismissed = false;
+    try {
+      dismissed = localStorage.getItem(NOTICE_DISMISSED_KEY) === 'true';
+    } catch {
+      // localStorage unavailable — show modal anyway
+    }
+
     if (!dismissed) {
       setVisible(true);
-      // Fetch IP hash in background
+      // Fetch IP hash in background (getIpHash already wraps localStorage)
       getIpHash().then(setIpHash).catch(() => setIpHash('unknown'));
     }
   }, []);
 
   function handleClose() {
-    localStorage.setItem(NOTICE_DISMISSED_KEY, 'true');
+    try {
+      localStorage.setItem(NOTICE_DISMISSED_KEY, 'true');
+    } catch {
+      // localStorage unavailable — proceed anyway
+    }
     setVisible(false);
   }
 
