@@ -188,11 +188,7 @@ export default function App() {
     setSummaryText('');
 
     try {
-      const response = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
+      const response = await fetch(`${API_URL}?${new URLSearchParams({ url })}`);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -298,7 +294,8 @@ export default function App() {
       <Header />
       <main className="main-content">
         <UrlInput
-          url={url}
+          value={url}
+          onChange={setUrl}
           loading={loading}
           onFetch={fetchTranscript}
         />
@@ -330,11 +327,8 @@ export default function App() {
                 </span>
               </button>
             </div>
-            {reconstructedText && (
-              <TranscriptPanel
-                transcript={reconstructedText}
-                title="Reconstructed Transcript"
-              />
+            {transcriptData?.snippets?.length > 0 && (
+              <TranscriptPanel snippets={transcriptData.snippets} />
             )}
             {summaryText && (
               <SummaryPanel

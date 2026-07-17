@@ -104,3 +104,10 @@ curl http://127.0.0.1:4000/api/health
 - Na Lenovo-Serwer: trzeba wystawić przez Tailscale (TODO: osobne zadanie)
 - `buildOmlxProvider()` zachowuje pełną logikę fallback models (nie zmieniona)
 - Dla nowego providera: wystarczy dodać `build<Xxx>Provider()` i dopisać do `buildLlmProvider()`
+
+## 2026-07-17 — Naprawa kontraktu transcript panel/API
+- **Co:** Frontend pobiera transcript przez `GET /api/transcript?url=…`, zgodnie z kontraktem backendu, i przekazuje `transcriptData.snippets` do `TranscriptPanel`.
+- **Plik:** `client/src/App.jsx`, `client/src/components/UrlInput.jsx`
+- **Build:** `npm run build` — PASS (2026-07-17)
+- **Preview:** niezweryfikowany lokalnie w tej próbie; deployment na Lenovo zablokowany przez brak routingu SSH (`Network is unreachable`).
+- **Raport:** Kanban `t_803afbf7`

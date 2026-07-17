@@ -5,7 +5,7 @@ export default function UrlInput({ value, onChange, onFetch, loading }) {
 
   function handleSubmit(e) {
     e.preventDefault();
-    onFetch();
+    onFetch(e);
   }
 
   return (
