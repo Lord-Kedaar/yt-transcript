@@ -1197,7 +1197,7 @@ process.on('uncaughtException', err => {
   shutdown(1, 'uncaughtException');
 });
 
-server = app.listen(PORT, '0.0.0.0', () => {
+server = app.listen(PORT, () => {
   console.log(`ytTranscript running on http://localhost:${PORT}`);
   console.log(`Frontend recovery: ${fs.existsSync(INDEX_HTML_PATH) ? 'available' : 'missing'}`);
 });
