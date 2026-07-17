@@ -16,13 +16,13 @@ const PORT = Number(process.env.PORT || 4000);
 
 // ─── LLM Provider Config (env-driven) ───────────────────────────
 // Supported providers: 'omlx' | 'freellmapi' | 'mistral' | 'groq'
-// Switch by setting LLM_PROVIDER env var. Defaults to 'omlx' for backwards compat.
-const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'omlx').toLowerCase();
+// Switch by setting LLM_PROVIDER env var. Defaults to 'mistral' for Mistral primary, oMLX fallback.
+const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'mistral').toLowerCase();
 
 // Fallback chain — comma-separated provider names tried in order when the
 // primary provider's health check fails. Empty string = no fallback (single-provider mode).
 // Example: LLM_PROVIDER_FALLBACK=mistral,groq
-const LLM_PROVIDER_FALLBACK = (process.env.LLM_PROVIDER_FALLBACK || '')
+const LLM_PROVIDER_FALLBACK = (process.env.LLM_PROVIDER_FALLBACK || 'omlx')
   .split(',')
   .map(s => s.trim().toLowerCase())
   .filter(Boolean);
