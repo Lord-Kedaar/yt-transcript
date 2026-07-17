@@ -6,6 +6,7 @@ import TranscriptPanel from './components/TranscriptPanel';
 import ReconstructedPanel from './components/ReconstructedPanel';
 import SummaryPanel from './components/SummaryPanel';
 import ExportButtons from './components/ExportButtons';
+import DemoNoticeModal from './components/DemoNoticeModal';
 import { BUILD_INFO } from './buildInfo.js';
 
 const API_URL = '/api/transcript';
@@ -414,6 +415,8 @@ export default function App() {
       <Header />
 
       <main className="main-content">
+        <DemoNoticeModal />
+
         <UrlInput value={url} onChange={setUrl} onFetch={handleFetch} loading={loading} />
 
         {error && (
