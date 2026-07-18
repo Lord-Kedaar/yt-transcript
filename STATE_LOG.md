@@ -146,3 +146,10 @@ curl http://127.0.0.1:4000/api/health
 - **Backup:** `/srv/storage/AI_Projects/_archive/yt-transcript/20260625T105940Z/yt-transcript-runtime.tgz` (450 KB)
 - **W runtime root zostały:** `CHANGELOG.md`, `DEPLOYMENT_LENOVO_LINUX.md`, `.env`, `.env.example`, `index.html`, `manage.sh`, `package.json`, `package-lock.json`, `server.js`, `start-frontend.sh`, `node_modules/`, `.gitignore`.
 - **Walidacja:** `GET /api/health` 200, `GET /` 200 po cleanupie; proces `node server.js` PID 4054067 ciągle aktywny.
+
+## 2026-07-18 — dual-stack bind dla Cloudflare Tunnel
+- **Co:** Domyślny bind originu zmieniony z IPv4-only `0.0.0.0` na `process.env.HOST || '::'`, aby `localhost` rozwiązywany przez tunnel do `[::1]:4002` działał bez utraty jawnego override `HOST`.
+- **Plik:** `server.js`
+- **Build:** canonical staging Lenovo: `npm run build` — Vite 287 modules, 11.80s; `node --check server.js` OK.
+- **Preview:** `127.0.0.1`, `[::1]`, publiczne `/` oraz `/api/health` — HTTP 200 po restarcie przez `yt-transcript.service`.
+- **Raport:** `/tmp/yt-transcript-canonical-rollback-plan.md`; rollback: `git revert <commit>` + `systemctl --user restart yt-transcript.service`.
