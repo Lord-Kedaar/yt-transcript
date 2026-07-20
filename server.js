@@ -1146,9 +1146,12 @@ function stripOutputWrappers(text) {
   }
 
   // Strip common leading labels ("Reconstruction:", "English:", "Output:", etc.)
-  out = out.replace(/^(?:reconstruction|english|output|result|translation|text)\s*[:\-]\s*/im, '');
+  out = out.replace(/^(?:reconstruction|english|output|result|translation|text)\s*[:-]\s*/im, '');
   // Strip a leading "Here is the reconstruction:" style preamble sentence.
-  out = out.replace(/^here(?:'|)s (?:the |a )?(?:reconstruction|english text|output|result)[:\-]?\s*/im, '');
+  out = out.replace(
+    /^here(?:'|)s (?:the |a )?(?:reconstruction|english text|output|result)[:-]?\s*/im,
+    '',
+  );
 
   return out.trim();
 }
@@ -1690,7 +1693,7 @@ process.on('uncaughtException', err => {
   shutdown(1, 'uncaughtException');
 });
 
-server = app.listen(PORT, () => {
+server = app.listen(PORT, process.env.HOST || '::', () => {
   console.log(`ytTranscript running on http://localhost:${PORT}`);
   console.log(`Frontend recovery: ${fs.existsSync(INDEX_HTML_PATH) ? 'available' : 'missing'}`);
 });
