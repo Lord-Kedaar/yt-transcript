@@ -141,7 +141,10 @@ ${text}`;
 }
 
 // Sentinels returned by the TTS-prep LLM that must not reach Piper
-const TTS_PREP_SENTINELS = ['PIPER_TTS_PREP_EMPTY_INPUT', 'PIPER_TTS_PREP_REJECTED_UNSUPPORTED_SOURCE_TYPE'];
+const TTS_PREP_SENTINELS = [
+  'PIPER_TTS_PREP_EMPTY_INPUT',
+  'PIPER_TTS_PREP_REJECTED_UNSUPPORTED_SOURCE_TYPE',
+];
 
 function isTtsPrepSentinel(value) {
   return TTS_PREP_SENTINELS.includes(String(value).trim());
@@ -162,8 +165,11 @@ const AI_DAILY_LIMIT_ENABLED = process.env.YTTRANSCRIPT_AI_DAILY_LIMIT_ENABLED =
 const AI_DAILY_LIMIT = Number(process.env.YTTRANSCRIPT_AI_DAILY_LIMIT) || 5;
 const AI_LIMIT_STORE_PATH = path.join(__dirname, '.ai-daily-limit.json');
 const AI_CONTACT_EMAIL = process.env.YTTRANSCRIPT_CONTACT_EMAIL || 'kontakt@radoslaw-pleskot.com';
-const PROJECT_DESCRIPTION_URL = process.env.YTTRANSCRIPT_PROJECT_DESCRIPTION_URL || 'https://radoslaw-pleskot.com/projekty/yttranscript/';
-const PRIVACY_POLICY_URL = process.env.YTTRANSCRIPT_PRIVACY_POLICY_URL || 'https://radoslaw-pleskot.com/pl/privacy/';
+const PROJECT_DESCRIPTION_URL =
+  process.env.YTTRANSCRIPT_PROJECT_DESCRIPTION_URL ||
+  'https://radoslaw-pleskot.com/projekty/yttranscript/';
+const PRIVACY_POLICY_URL =
+  process.env.YTTRANSCRIPT_PRIVACY_POLICY_URL || 'https://radoslaw-pleskot.com/pl/privacy/';
 
 // Read-only JSON store for IP→{date,count}
 function readLimitStore() {
@@ -171,7 +177,9 @@ function readLimitStore() {
     if (fs.existsSync(AI_LIMIT_STORE_PATH)) {
       return JSON.parse(fs.readFileSync(AI_LIMIT_STORE_PATH, 'utf8'));
     }
-  } catch { /* corrupt or missing → start fresh */ }
+  } catch {
+    /* corrupt or missing → start fresh */
+  }
   return {};
 }
 function writeLimitStore(data) {
@@ -216,7 +224,13 @@ function checkAiLimit(ip) {
     entry.count = 0;
   }
   if (entry.count >= AI_DAILY_LIMIT) {
-    return { allowed: false, usedToday: entry.count, remainingToday: 0, limitEnabled: true, limit: AI_DAILY_LIMIT };
+    return {
+      allowed: false,
+      usedToday: entry.count,
+      remainingToday: 0,
+      limitEnabled: true,
+      limit: AI_DAILY_LIMIT,
+    };
   }
   entry.count += 1;
   store[ip] = entry;
@@ -225,11 +239,20 @@ function checkAiLimit(ip) {
   const yesterday = new Date(Date.now() - 86400_000).toISOString().slice(0, 10);
   let cleaned = 0;
   for (const k of Object.keys(store)) {
-    if (store[k].date < yesterday) { delete store[k]; cleaned++; }
+    if (store[k].date < yesterday) {
+      delete store[k];
+      cleaned++;
+    }
   }
   if (cleaned > 0) writeLimitStore(store); // single write after mutation
 
-  return { allowed: true, usedToday: entry.count, remainingToday: AI_DAILY_LIMIT - entry.count, limitEnabled: true, limit: AI_DAILY_LIMIT };
+  return {
+    allowed: true,
+    usedToday: entry.count,
+    remainingToday: AI_DAILY_LIMIT - entry.count,
+    limitEnabled: true,
+    limit: AI_DAILY_LIMIT,
+  };
 }
 
 // Express middleware: block /api/transform when AI daily limit is exhausted
@@ -307,17 +330,31 @@ const FAVICON_ASSETS = new Set([
   'favicon-192x192.png',
   'favicon-512x512.png',
 ]);
-app.get(['/favicon.ico', '/favicon-light.svg', '/favicon-dark.svg', '/apple-touch-icon.png', '/favicon-16x16.png', '/favicon-32x32.png', '/favicon-48x48.png', '/favicon-64x64.png', '/favicon-192x192.png', '/favicon-512x512.png'], (req, res) => {
-  const name = req.path.slice(1);
-  // Express only routes these 10 exact paths here, so name is constrained
-  // to FAVICON_ASSETS. Re-check is defence-in-depth against any future
-  // refactor that loosens the matching.
-  if (!FAVICON_ASSETS.has(name)) {
-    return res.status(404).end();
-  }
-  res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
-  res.sendFile(path.join(__dirname, name));
-});
+app.get(
+  [
+    '/favicon.ico',
+    '/favicon-light.svg',
+    '/favicon-dark.svg',
+    '/apple-touch-icon.png',
+    '/favicon-16x16.png',
+    '/favicon-32x32.png',
+    '/favicon-48x48.png',
+    '/favicon-64x64.png',
+    '/favicon-192x192.png',
+    '/favicon-512x512.png',
+  ],
+  (req, res) => {
+    const name = req.path.slice(1);
+    // Express only routes these 10 exact paths here, so name is constrained
+    // to FAVICON_ASSETS. Re-check is defence-in-depth against any future
+    // refactor that loosens the matching.
+    if (!FAVICON_ASSETS.has(name)) {
+      return res.status(404).end();
+    }
+    res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+    res.sendFile(path.join(__dirname, name));
+  },
+);
 // Serve static assets from build output
 app.use(
   '/assets',
@@ -1011,24 +1048,41 @@ async function checkOmlx() {
   return llmProvider.health();
 }
 
-const TRANSFORM_PROMPTS = {
-  reconstruct: {
-    system: `You are a text reconstruction assistant.
+function buildReconstructSystemPrompt(translateTo = null) {
+  const base = `You are a text reconstruction assistant.
 
 Instructions:
 - Merge fragmented transcript snippets into readable paragraphs.
 - Preserve the original wording as closely as possible.
 - Do not summarize.
 - Do not add commentary.
-- Return plain text only.
-- If translation is requested, output ONLY the final Polish text.
-- Never output both languages.
-- Do not add labels like "Translation" or "Tłumaczenie".
-`,
-    userPrefix: 'Reconstruct this transcript into readable paragraphs.',
-  },
-  summarize: {
-    system: `You are a summarization assistant.
+- Return plain text only.`;
+
+  if (translateTo === 'pl') {
+    return (
+      base +
+      `\n- Output ONLY the final Polish text.\n- Never output both languages.\n- Do not add labels like "Translation" or "Tłumaczenie".`
+    );
+  }
+  if (translateTo === 'de') {
+    return (
+      base +
+      `\n- Output ONLY the final German text.\n- Never output both languages.\n- Do not add labels like "Translation" or "Übersetzung".`
+    );
+  }
+  // No translation (original or 'en'): keep the same strict output-format
+  // constraint as pl/de. Without it the model is free to emit markdown fences,
+  // "Here is the reconstruction:" labels, or mixed commentary, which an upstream
+  // response-shape/content validation rejects disproportionately for EN
+  // ("The string did not match expected pattern."). See docs/RCA_reconstruct_pattern_mismatch.md.
+  return (
+    base +
+    `\n- Output ONLY plain reconstructed English text.\n- Do not add labels like "Reconstruction", "Translation" or "English".\n- Do not wrap the output in markdown code fences.\n- Do not include explanatory commentary before or after the text.`
+  );
+}
+
+function buildSummarizeSystemPrompt(translateTo = null) {
+  const base = `You are a summarization assistant.
 
 Instructions:
 - Produce a comprehensive summary in short thematic paragraphs, not as a single wall of text.
@@ -1038,11 +1092,31 @@ Instructions:
 - Cover all major themes, arguments, findings, caveats, and consequences.
 - Match the transcript language unless translation is requested.
 - Return plain text only.
-- No code blocks, no JSON, no meta-commentary.
-- If translation is requested, output ONLY the final Polish summary.
-- Never output both languages.
-- Do not add labels like "Summary", "Translation", "Podsumowanie" or "Tłumaczenie".
-`,
+- No code blocks, no JSON, no meta-commentary.`;
+
+  if (translateTo === 'pl') {
+    return (
+      base +
+      `\n- Output ONLY the final Polish summary.\n- Never output both languages.\n- Do not add labels like "Summary", "Translation", "Podsumowanie" or "Tłumaczenie".`
+    );
+  }
+  if (translateTo === 'de') {
+    return (
+      base +
+      `\n- Output ONLY the final German summary.\n- Never output both languages.\n- Do not add labels like "Summary", "Translation", "Zusammenfassung" or "Übersetzung".`
+    );
+  }
+  // No translation (original or 'en'): no language constraint in system prompt
+  return base;
+}
+
+const TRANSFORM_PROMPTS = {
+  reconstruct: {
+    systemTemplate: 'reconstruct',
+    userPrefix: 'Reconstruct this transcript into readable paragraphs.',
+  },
+  summarize: {
+    systemTemplate: 'summarize',
     userPrefix: 'Summarize this transcript.',
   },
 };
@@ -1055,6 +1129,28 @@ function stripReasoningArtifacts(text) {
     .replace(/^\s*\*\*Process .*?\*\*\s*/im, '')
     .replace(/^\s*\*\*Self-Correction\/Refinement.*?\*\*\s*/im, '')
     .trim();
+}
+
+// Defensive cleanup of model output before validation. Strips markdown code
+// fences (``` or ~~~) and common leading labels like "Reconstruction:" /
+// "English:" / "Here is the reconstruction:" that an upstream response-shape
+// validation may reject (the EN "did not match expected pattern" failure).
+// Never throws — pure string transforms only.
+function stripOutputWrappers(text) {
+  let out = String(text || '').trim();
+
+  // Remove a single leading/trailing fenced block, e.g. ```text ... ``` or ~~~
+  const fenceMatch = out.match(/^(?:```|~~~)(?:[a-zA-Z0-9_-]*)?\s*\n([\s\S]*?)\n?(?:```|~~~)\s*$/);
+  if (fenceMatch) {
+    out = fenceMatch[1].trim();
+  }
+
+  // Strip common leading labels ("Reconstruction:", "English:", "Output:", etc.)
+  out = out.replace(/^(?:reconstruction|english|output|result|translation|text)\s*[:\-]\s*/im, '');
+  // Strip a leading "Here is the reconstruction:" style preamble sentence.
+  out = out.replace(/^here(?:'|)s (?:the |a )?(?:reconstruction|english text|output|result)[:\-]?\s*/im, '');
+
+  return out.trim();
 }
 
 function buildTranscriptResponse(videoId, result) {
@@ -1087,13 +1183,23 @@ app.get('/api/ai-limit-status', (req, res) => {
   noCache(res);
   const ip = clientIp(req);
   if (!AI_DAILY_LIMIT_ENABLED) {
-    return res.json({ limitEnabled: false, dailyLimit: null, usedToday: null, remainingToday: null });
+    return res.json({
+      limitEnabled: false,
+      dailyLimit: null,
+      usedToday: null,
+      remainingToday: null,
+    });
   }
   const store = readLimitStore();
   const today = todayUtc();
   const entry = store[ip];
   if (!entry || entry.date !== today) {
-    return res.json({ limitEnabled: true, dailyLimit: AI_DAILY_LIMIT, usedToday: 0, remainingToday: AI_DAILY_LIMIT });
+    return res.json({
+      limitEnabled: true,
+      dailyLimit: AI_DAILY_LIMIT,
+      usedToday: 0,
+      remainingToday: AI_DAILY_LIMIT,
+    });
   }
   res.json({
     limitEnabled: true,
@@ -1131,9 +1237,7 @@ app.get('/api/health', async (req, res) => {
     reconstruct: Boolean(TRANSFORM_PROMPTS.reconstruct),
     summarize: Boolean(TRANSFORM_PROMPTS.summarize),
   };
-  const mode = lmStatus.ok
-    ? (llmProvider.name === 'oMLX' ? 'local' : 'remote')
-    : 'unavailable';
+  const mode = lmStatus.ok ? (llmProvider.name === 'oMLX' ? 'local' : 'remote') : 'unavailable';
   res.json({
     status: lmStatus.ok ? 'ok' : 'degraded',
     mode,
@@ -1275,32 +1379,19 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
       ? 'Use paragraphs. Keep every meaning intact.'
       : 'STRUCTURE: First write exactly one introductory paragraph (3-5 sentences) about the speaker/author/channel and the topic of the video. Then write the rest as thematic sections. Each section must use a bold header like **Theme Name:** followed by a concise paragraph of 2-4 sentences. Use blank lines between sections. Do NOT use bullet points. Do NOT return one continuous block of text.';
 
-  let systemPrompt = promptDef.system;
-  if (mode === 'translate') {
-    const targetLang = req.body.targetLang || 'pl';
-    // defensive: only allow 'pl' | 'de' | 'en' (en = noop, fallback)
-    const allowed = ['pl', 'de', 'en'];
-    const lang = allowed.includes(targetLang) ? targetLang : 'pl';
+  // Determine target language for translation mode
+  const targetLang = (req.body.targetLang || 'pl').toLowerCase();
+  const allowedLangs = ['pl', 'de', 'en'];
+  const translateTo = mode === 'translate' && allowedLangs.includes(targetLang) ? targetLang : null;
 
-    if (lang !== 'en') {
-      const langName = lang === 'de' ? 'German' : 'Polish';
-      systemPrompt +=
-        type === 'reconstruct'
-          ? `\nTranslate the entire output into ${langName}. Return ${langName} only.`
-          : `\nTranslate the entire summary into ${langName}. Return ${langName} only.`;
-    }
-  }
+  // Build system prompt based on type and target language
+  const systemPrompt =
+    type === 'reconstruct'
+      ? buildReconstructSystemPrompt(translateTo)
+      : buildSummarizeSystemPrompt(translateTo);
 
-  const translationSuffix = (() => {
-    if (mode !== 'translate') return '';
-    const allowed = ['pl', 'de', 'en'];
-    const lang = allowed.includes(req.body.targetLang) ? req.body.targetLang : 'pl';
-    if (lang === 'en') return ''; // no-op translation
-    const langName = lang === 'de' ? 'German' : 'Polish';
-    return `\nOutput must be only in ${langName}. No other language. No bilingual version. Preserve the same structure: one intro paragraph, then themed sections with bold headers and short paragraphs.`;
-  })();
-
-  const userPrompt = `${userPrefix}\n\n${rawText}\n\n${userSuffix}${translationSuffix}`;
+  // Build user prompt: prefix + raw text + suffix
+  const userPrompt = `${userPrefix}\n\n${rawText}\n\n${userSuffix}`;
 
   // Capture timing just before the chat call so elapsedMs reflects actual work.
   const startAt = Date.now();
@@ -1323,6 +1414,7 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
       // ignore accidental plain-text JSON-ish output
     }
 
+    output = stripOutputWrappers(output);
     output = stripReasoningArtifacts(output);
     if (!output) {
       return res.status(502).json({ error: `${llmProvider.name} returned an empty response.` });
@@ -1452,9 +1544,8 @@ app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
 
   try {
     // 3. Resolve language (use provided, or detect)
-    const resolvedLang = language && SUPPORTED_TTS_LANGS.has(language)
-      ? language
-      : (detectLanguage(text) || 'en');
+    const resolvedLang =
+      language && SUPPORTED_TTS_LANGS.has(language) ? language : detectLanguage(text) || 'en';
 
     if (!SUPPORTED_TTS_LANGS.has(resolvedLang)) {
       return res.status(400).json({
@@ -1464,18 +1555,25 @@ app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
     }
 
     // 4. TTS-prep LLM — silently clean text for Piper
-    console.log(`[TTS] Preparing ${type} text (${text.length} chars) for Piper in ${resolvedLang}...`);
+    console.log(
+      `[TTS] Preparing ${type} text (${text.length} chars) for Piper in ${resolvedLang}...`,
+    );
     const llm = llmProvider;
     const prepMessages = [
-      { role: 'system', content: TTS_PREP_SYSTEM_PROMPTS[resolvedLang] || TTS_PREP_SYSTEM_PROMPTS.en },
+      {
+        role: 'system',
+        content: TTS_PREP_SYSTEM_PROMPTS[resolvedLang] || TTS_PREP_SYSTEM_PROMPTS.en,
+      },
       { role: 'user', content: buildPiperPrepUserPrompt(text, type, resolvedLang) },
     ];
     let preparedText;
     try {
       const prepResponse = await llm.chat(prepMessages, { timeoutMs: 60000, model: null });
-      preparedText = String(typeof prepResponse === 'string' ? prepResponse
-        : prepResponse?.content || prepResponse?.text || prepResponse?.output || '')
-        .trim();
+      preparedText = String(
+        typeof prepResponse === 'string'
+          ? prepResponse
+          : prepResponse?.content || prepResponse?.text || prepResponse?.output || '',
+      ).trim();
 
       // Guard: if LLM returned a sentinel, do not send to Piper
       if (isTtsPrepSentinel(preparedText)) {
@@ -1494,7 +1592,11 @@ app.post('/api/tts', ttsBodyGuard, ttsLimiter, async (req, res) => {
     console.log(`[TTS] Prep done (${preparedText.length} chars) — synthesizing...`);
 
     // 5. Cache key: reuse existing audio for identical input
-    const textHash = crypto.createHash('sha256').update(`${type}:${resolvedLang}:${preparedText}`).digest('hex').slice(0, 16);
+    const textHash = crypto
+      .createHash('sha256')
+      .update(`${type}:${resolvedLang}:${preparedText}`)
+      .digest('hex')
+      .slice(0, 16);
     const id = `${resolvedLang}-${type}-${textHash}`;
     const outPath = path.join(ttsCacheDir, `${id}.wav`);
 
