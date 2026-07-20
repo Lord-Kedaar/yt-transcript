@@ -57,7 +57,9 @@ export default function DemoNoticeModal() {
     if (!dismissed) {
       setVisible(true);
       // Fetch IP hash in background (getIpHash already wraps localStorage)
-      getIpHash().then(setIpHash).catch(() => setIpHash('unknown'));
+      getIpHash()
+        .then(setIpHash)
+        .catch(() => setIpHash('unknown'));
     }
   }, []);
 
@@ -98,8 +100,8 @@ export default function DemoNoticeModal() {
         <div className="demo-notice-content">
           <h3>Demo Notice</h3>
           <p className="demo-notice-text">
-            This is a demo. Each user gets 6 AI actions per day based on IP address.
-            Your IP is stored on the creator&apos;s server for quota tracking only — no personal data.
+            This is a demo. Each user gets 6 AI actions per day based on IP address. Your IP is
+            stored on the creator&apos;s server for quota tracking only — no personal data.
             Transcript fetching is unlimited and unaffected by the AI daily limit.
           </p>
         </div>
@@ -118,9 +120,7 @@ export default function DemoNoticeModal() {
           </a>
         </div>
 
-        <div className="demo-notice-ip">
-          IP hash: {ipHash}
-        </div>
+        <div className="demo-notice-ip">IP hash: {ipHash}</div>
       </div>
     </div>
   );

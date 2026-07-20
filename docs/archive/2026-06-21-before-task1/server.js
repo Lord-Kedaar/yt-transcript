@@ -912,9 +912,7 @@ app.get('/api/health', async (req, res) => {
     reconstruct: Boolean(TRANSFORM_PROMPTS.reconstruct),
     summarize: Boolean(TRANSFORM_PROMPTS.summarize),
   };
-  const mode = lmStatus.ok
-    ? (llmProvider.name === 'oMLX' ? 'local' : 'remote')
-    : 'unavailable';
+  const mode = lmStatus.ok ? (llmProvider.name === 'oMLX' ? 'local' : 'remote') : 'unavailable';
   res.json({
     status: lmStatus.ok ? 'ok' : 'degraded',
     mode,
