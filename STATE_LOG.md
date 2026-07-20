@@ -1,3 +1,12 @@
+## 2026-07-20 — ytTranscript — fix: przywrócono bezpieczny fallback oMLX\n\n- **Co:** Przywrócono domyślny fallback LLM_PROVIDER_FALLBACK na 'omlx' w server.js oraz ustawiono jawnie LLM_PROVIDER_FALLBACK=omlx w .env i .env.example, aby spełnić polecenie użytkownika o natychmiastowym przywróceniu kontraktu providerów: primary Mistral, automatyczny fallback na lokalne oMLX.\n- **Plik:** server.js (zmiana domyślnego fallbacku), .env (ustawienie zmiennej), .env.example (aktualizacja przykładu), STATE_LOG.md (ten wpis)\n- **Build:** testy regresyjne scripts/test-fallback-regression.mjs przeszły (6/6)\n- **Preview:** lokalny serwer uruchomiony na porcie 4001, endpoint /api/health zwraca provider=Mistral (ponieważ Mistral jest zdrowy), konfiguracja fallbacku widoczna w kodzie\n- **Raport:** brak osobnego raportu; zmiany opisane w tym wpisie STATE_LOG
+## 2026-07-20 — ytTranscript — fix: bezpieczny domyślny fallback (usunięto 'omlx')
+
+- **Co:** Zmieniono domyślny fallback w `server.js` z `'omlx'` na `''` (brak). Dotychczas brak `LLM_PROVIDER_FALLBACK` w `.env` powodował ciche przejście na niestabilny oMLX przy problemach z Mistralem. Poprawiono komentarze w `server.js` i `.env.example` z ostrzeżeniem. Dodano test regresyjny `scripts/test-fallback-regression.mjs` (6/6 passed). Wdrożono na Lenovo (canonical: `LLM_PROVIDER_FALLBACK=omlx` usunięte z `.env`, server.js zaktualizowane, systemd restart). Zweryfikowano live: `/api/health` 200 provider=Mistral, `/api/transform/reconstruct` 200 1.3s model=mistral-small-2603.
+- **Plik:** `server.js` (zmiana default fallback), `.env.example` (komentarz), `scripts/test-fallback-regression.mjs` (nowy)
+- **Build:** 6/6 testów passed
+- **Preview:** Lenovo `http://localhost:4002/api/health` → 200 Mistral connected
+- **Raport:** `docs/METRICUS_FIX_MISTRAL_FALLBACK_2026-07-20.md`
+
 # STATE_LOG — ytTranscript
 
 ## 2026-07-07 — ytTranscript — chore/update-favicons: favicon + Apple touch icon + whitelisted asset handler
