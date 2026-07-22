@@ -4,6 +4,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { createDiagnosticLogger, classifyError, publicTransformError } from './diagnostics.js';
 import express from 'express';
 import cors from 'cors';
 import { fetchTranscript } from 'youtube-transcript-plus';
@@ -13,6 +14,7 @@ import he from 'he';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = Number(process.env.PORT || 4000);
+const diagnostics = createDiagnosticLogger({ logDir: process.env.YTTRANSCRIPT_LOG_DIR });
 
 // ─── LLM Provider Config (env-driven) ───────────────────────────
 // Supported providers: 'omlx' | 'freellmapi' | 'mistral' | 'groq'
@@ -387,6 +389,22 @@ function getErrorMessage(err) {
   return err.message || err.error?.message || String(err);
 }
 
+function providerEndpoint(name) {
+  const value = {
+    mistral: MISTRAL_URL,
+    omlx: OMLX_URL,
+    freellmapi: FREELLMAPI_URL,
+    groq: GROQ_URL,
+  }[String(name || '').toLowerCase()];
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    return 'invalid-configured-endpoint';
+  }
+}
+
 function isRetryableError(err) {
   if (!err) return false;
   if (
@@ -608,7 +626,12 @@ function buildProviderChain(chain) {
     },
     async chat(messages, opts) {
       const a = await active();
-      return a.chat(messages, opts);
+      try {
+        return { ...(await a.chat(messages, opts)), providerName: a.name };
+      } catch (err) {
+        err.providerName = a.name;
+        throw err;
+      }
     },
   };
 }
@@ -1359,6 +1382,16 @@ function rawTextGuard(req, _res, next) {
 app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, async (req, res) => {
   noCache(res);
   const { snippets, type, mode = 'original' } = req.body || {};
+  const requestId = req.get('X-Request-ID') || crypto.randomUUID();
+  res.setHeader('X-Request-ID', requestId);
+  const isSummary = type === 'summarize';
+  if (isSummary)
+    diagnostics.event('info', 'transform.requested', {
+      requestId,
+      type,
+      mode,
+      snippetCount: Array.isArray(snippets) ? snippets.length : 0,
+    });
   if (!Array.isArray(snippets) || snippets.length === 0) {
     return res.status(400).json({ error: 'No snippets provided.' });
   }
@@ -1369,11 +1402,36 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
   // checkOmlx() → llmProvider.health(): provider-agnostic (was hardcoded to oMLX
   // pre-migration). Hardcoded error string replaced with provider.name template
   // so the message correctly identifies the active provider.
+  const preflightStartedAt = Date.now();
   const lmStatus = await checkOmlx();
-  if (!lmStatus.ok) {
-    return res.status(503).json({
-      error: `${llmProvider.name} is unreachable: ${lmStatus.error || 'unknown error'}`,
+  const activeProvider = lmStatus.activeProvider || llmProvider.name;
+  const fallbackConfigured = Array.isArray(lmStatus.chain) && lmStatus.chain.length > 1;
+  const fallbackAttempted =
+    fallbackConfigured &&
+    (!lmStatus.ok ||
+      String(activeProvider).toLowerCase() !== String(llmProvider.name).toLowerCase());
+  if (isSummary)
+    diagnostics.event(lmStatus.ok ? 'info' : 'warn', 'provider.preflight', {
+      requestId,
+      provider: activeProvider,
+      endpoint: providerEndpoint(activeProvider),
+      ok: lmStatus.ok,
+      status: lmStatus.status || null,
+      durationMs: Date.now() - preflightStartedAt,
+      errorClassification: lmStatus.ok ? null : classifyError(lmStatus.error),
+      fallbackAttempted,
+      fallbackDecision: fallbackAttempted
+        ? lmStatus.ok
+          ? 'selected-fallback'
+          : 'fallback-attempted-no-healthy-provider'
+        : fallbackConfigured
+          ? 'primary-retained'
+          : 'no-fallback-configured',
     });
+  if (!lmStatus.ok) {
+    return res
+      .status(503)
+      .json({ error: publicTransformError({ type, fallbackAttempted }), requestId });
   }
 
   const promptDef = TRANSFORM_PROMPTS[type];
@@ -1408,6 +1466,14 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
     ];
 
     const result = await llmProvider.chat(messages, { timeoutMs: 120000 });
+    const chatProvider = result.providerName || activeProvider;
+    if (isSummary)
+      diagnostics.event('info', 'provider.chat.succeeded', {
+        requestId,
+        provider: chatProvider,
+        endpoint: providerEndpoint(chatProvider),
+        durationMs: Date.now() - startAt,
+      });
     let output = String(result.content || '').trim();
 
     try {
@@ -1422,7 +1488,20 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
     output = stripOutputWrappers(output);
     output = stripReasoningArtifacts(output);
     if (!output) {
-      return res.status(502).json({ error: `${llmProvider.name} returned an empty response.` });
+      const error = new Error('Provider returned an empty response.');
+      if (isSummary)
+        diagnostics.event('error', 'provider.chat.failed', {
+          requestId,
+          provider: activeProvider,
+          endpoint: providerEndpoint(activeProvider),
+          durationMs: Date.now() - startAt,
+          errorClassification: classifyError(error),
+          technicalCause: getErrorMessage(error),
+          fallbackAttempted,
+        });
+      return res
+        .status(502)
+        .json({ error: publicTransformError({ type, fallbackAttempted }), requestId });
     }
 
     const responseKey = type === 'reconstruct' ? 'reconstructed' : 'summary';
@@ -1443,13 +1522,23 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
       [responseKey]: output,
       snippetCount: snippets.length,
       model: result.model,
-      provider: llmProvider.name,
+      provider: chatProvider,
       elapsedMs,
       tokens,
     });
   } catch (err) {
     console.error(`Transform/${type} error:`, err);
-    res.status(502).json({ error: err?.message || 'Transformation failed.' });
+    if (isSummary)
+      diagnostics.event('error', 'provider.chat.failed', {
+        requestId,
+        provider: err.providerName || activeProvider,
+        endpoint: providerEndpoint(err.providerName || activeProvider),
+        durationMs: Date.now() - startAt,
+        errorClassification: classifyError(err),
+        technicalCause: getErrorMessage(err),
+        fallbackAttempted,
+      });
+    res.status(502).json({ error: publicTransformError({ type, fallbackAttempted }), requestId });
   }
 });
 
