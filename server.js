@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createDiagnosticLogger, classifyError, publicTransformError } from './diagnostics.js';
+import { createProviderStateMachine } from './provider-state-machine.js';
 
 // Diagnostic logger instance — used for all JSONL event emission.
 
@@ -581,61 +582,38 @@ function buildLlmProvider() {
     seen.add(name);
     chain.push(fb);
   }
-  return buildProviderChain(chain);
-}
-
-/**
- * Wraps a chain of providers with health-cached active() resolution.
- * The returned object's chat() goes to whichever provider active() resolved to
- * most recently (sticky until that provider reports unhealthy).
- */
-function buildProviderChain(chain) {
-  let resolved = chain[0];
-  let resolvedAt = 0;
-
-  async function active() {
-    const now = Date.now();
-    // Sticky: if we resolved within the cache TTL, don't re-probe.
-    if (now - resolvedAt < HEALTH_CACHE_TTL_MS) return resolved;
-    // Cache expired — re-probe the current provider; if healthy stay sticky,
-    // otherwise walk the chain looking for a healthy fallback.
-    const h = await resolved.health();
-    if (h.ok) {
-      resolvedAt = now;
-      return resolved;
-    }
-    for (const provider of chain) {
-      if (provider === resolved) continue;
-      const h2 = await provider.health();
-      if (h2.ok) {
-        console.log(`[llm] Switched active provider: ${resolved.name} → ${provider.name}`);
-        resolved = provider;
-        resolvedAt = now;
-        return resolved;
-      }
-      console.warn(`[llm] Provider '${provider.name}' unhealthy: ${h2.error || 'unknown'}`);
-    }
-    // All unhealthy — return primary; caller will surface the error from chat().
-    return chain[0];
-  }
+  // Build the state machine that owns provider recovery: PRIMARY → FALLBACK_OPEN
+  // → HALF_OPEN → PRIMARY. Single-flight probe, monotonic cooldown with bounded
+  // backoff + jitter. See docs/ADR_PROVIDER_RECOVERY_STATE_MACHINE.md.
+  const sm = createProviderStateMachine({
+    chain,
+    diagnostics,
+    config: {
+      baseCooldownMs: 10_000,
+      maxCooldownMs: 300_000,
+      healthCacheTtlMs: HEALTH_CACHE_TTL_MS,
+    },
+  });
 
   return {
     name: chain[0].name,
     chain: chain.map(p => p.name),
+    // State-machine-backed health() — returns the active provider's health,
+    // plus chain, activeProvider, and configuredProvider for observability.
     async health() {
-      const a = await active();
-      const h = await a.health();
-      return { ...h, chain: chain.map(p => p.name), activeProvider: a.name };
+      return sm.health();
     },
+    // State-machine-backed chat() — routes to the active provider, and on
+    // qualified chat failure in PRIMARY, transitions to FALLBACK_OPEN and
+    // retries on the fallback provider (single retry, not a loop).
     async chat(messages, opts) {
-      const a = await active();
-      try {
-        return { ...(await a.chat(messages, opts)), providerName: a.name };
-      } catch (err) {
-        err.providerName = a.name;
-        throw err;
-      }
+      return sm.chat(messages, opts);
     },
+    // Expose state-machine inspectors for /api/health and /api/lm-status.
+    getState: sm.getState,
+    getActiveProviderName: sm.getActiveProviderName,
+    getConfiguredProviderName: sm.getConfiguredProviderName,
+    getCounters: sm.getCounters,
   };
 }
 
@@ -1268,16 +1246,36 @@ app.get('/api/health', async (req, res) => {
     reconstruct: Boolean(TRANSFORM_PROMPTS.reconstruct),
     summarize: Boolean(TRANSFORM_PROMPTS.summarize),
   };
-  const mode = lmStatus.ok ? (llmProvider.name === 'oMLX' ? 'local' : 'remote') : 'unavailable';
+  // State-machine-aware fields: configuredProvider is the primary from env config,
+  // activeProvider is the runtime-active provider (may differ during fallback).
+  const smActiveName =
+    typeof llmProvider.getActiveProviderName === 'function'
+      ? llmProvider.getActiveProviderName()
+      : lmStatus.activeProvider || llmProvider.name;
+  const smConfiguredName =
+    typeof llmProvider.getConfiguredProviderName === 'function'
+      ? llmProvider.getConfiguredProviderName()
+      : llmProvider.name;
+  const smState = typeof llmProvider.getState === 'function' ? llmProvider.getState() : null;
+  const smCounters =
+    typeof llmProvider.getCounters === 'function' ? llmProvider.getCounters() : null;
+  const mode = lmStatus.ok ? (smActiveName === 'oMLX' ? 'local' : 'remote') : 'unavailable';
   res.json({
     status: lmStatus.ok ? 'ok' : 'degraded',
     mode,
     features,
     latencyMs,
     checkedAt: new Date().toISOString(),
-    provider: llmProvider.name,
+    // Backward-compatible: `provider` is the configured primary name.
+    provider: smConfiguredName,
+    // New explicit fields: configuredProvider vs activeProvider.
+    configuredProvider: smConfiguredName,
+    activeProvider: smActiveName,
     providerState: lmStatus.state,
     providerDetails: lmStatus,
+    // State machine state (PRIMARY / FALLBACK_OPEN / HALF_OPEN) and counters.
+    providerStateMachine: smState,
+    providerCounters: smCounters,
     model: activeModel,
     buildVersion: (await loadBuildInfo())?.builtAt || null,
     uptimeSeconds: Math.round(process.uptime()),
@@ -1501,7 +1499,7 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
     op.chat('start', {
       provider: activeProvider,
       endpoint: providerEndpoint(activeProvider),
-      modelType: llmProvider.name,
+      modelType: activeProvider,
     });
     const result = await llmProvider.chat(messages, { timeoutMs: 120000 });
     const chatProvider = result.providerName || activeProvider;
