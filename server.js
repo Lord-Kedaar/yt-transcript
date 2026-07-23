@@ -5,6 +5,9 @@ import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createDiagnosticLogger, classifyError, publicTransformError } from './diagnostics.js';
+
+// Diagnostic logger instance — used for all JSONL event emission.
+
 import express from 'express';
 import cors from 'cors';
 import { fetchTranscript } from 'youtube-transcript-plus';
@@ -1383,15 +1386,20 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
   noCache(res);
   const { snippets, type, mode = 'original' } = req.body || {};
   const requestId = req.get('X-Request-ID') || crypto.randomUUID();
+
+  // Create operation context for full pipeline tracing.
+  const op = diagnostics.createOperationContext(requestId);
   res.setHeader('X-Request-ID', requestId);
-  const isSummary = type === 'summarize';
-  if (isSummary)
-    diagnostics.event('info', 'transform.requested', {
-      requestId,
-      type,
-      mode,
-      snippetCount: Array.isArray(snippets) ? snippets.length : 0,
-    });
+
+  // Bind client-disconnect listener for this correlated operation.
+  op.bindResponseClose(res);
+
+  op.transformPhase('requested', {
+    type,
+    mode,
+    snippetCount: Array.isArray(snippets) ? snippets.length : 0,
+  });
+  op.tick('request_received');
   if (!Array.isArray(snippets) || snippets.length === 0) {
     return res.status(400).json({ error: 'No snippets provided.' });
   }
@@ -1403,6 +1411,7 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
   // pre-migration). Hardcoded error string replaced with provider.name template
   // so the message correctly identifies the active provider.
   const preflightStartedAt = Date.now();
+  op.tick('preflight');
   const lmStatus = await checkOmlx();
   const activeProvider = lmStatus.activeProvider || llmProvider.name;
   const fallbackConfigured = Array.isArray(lmStatus.chain) && lmStatus.chain.length > 1;
@@ -1410,25 +1419,48 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
     fallbackConfigured &&
     (!lmStatus.ok ||
       String(activeProvider).toLowerCase() !== String(llmProvider.name).toLowerCase());
-  if (isSummary)
-    diagnostics.event(lmStatus.ok ? 'info' : 'warn', 'provider.preflight', {
-      requestId,
-      provider: activeProvider,
-      endpoint: providerEndpoint(activeProvider),
-      ok: lmStatus.ok,
-      status: lmStatus.status || null,
-      durationMs: Date.now() - preflightStartedAt,
-      errorClassification: lmStatus.ok ? null : classifyError(lmStatus.error),
-      fallbackAttempted,
-      fallbackDecision: fallbackAttempted
-        ? lmStatus.ok
-          ? 'selected-fallback'
-          : 'fallback-attempted-no-healthy-provider'
-        : fallbackConfigured
-          ? 'primary-retained'
-          : 'no-fallback-configured',
-    });
+  // Provider selection / fallback decision — always logged for observability.
+  const providerSelectionEvent = {
+    requestId,
+    primary: llmProvider.name,
+    selected: activeProvider,
+    endpoint: providerEndpoint(activeProvider),
+    ok: lmStatus.ok,
+    status: lmStatus.status || null,
+    durationMs: Date.now() - preflightStartedAt,
+    errorClassification: lmStatus.ok ? null : classifyError(lmStatus.error),
+    fallbackConfigured,
+    fallbackAttempted,
+    fallbackDecision: fallbackAttempted
+      ? lmStatus.ok
+        ? 'selected-fallback'
+        : 'fallback-attempted-no-healthy-provider'
+      : fallbackConfigured
+        ? 'primary-retained'
+        : 'no-fallback-configured',
+  };
+  op.transformPhase('preflight', providerSelectionEvent);
+  op.selectProvider(activeProvider, providerSelectionEvent.fallbackDecision);
+
+  // Log per-provider health probe results during chain walk.
+  if (fallbackConfigured && Array.isArray(lmStatus.providerHealth)) {
+    for (const ph of lmStatus.providerHealth) {
+      op.probe(ph.name, 'provider_chain_active', {
+        ...ph,
+        endpoint: providerEndpoint(ph.name),
+        status: ph.status || null,
+        technicalCause: ph.error || ph.state || null,
+      });
+    }
+  }
+
   if (!lmStatus.ok) {
+    op.transformPhase('failed', {
+      status: 503,
+      errorClassification: classifyError(lmStatus.error),
+      technicalCause: lmStatus.error || 'no_healthy_provider',
+    });
+    op.finish({ sent: true });
     return res
       .status(503)
       .json({ error: publicTransformError({ type, fallbackAttempted }), requestId });
@@ -1465,15 +1497,20 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
       { role: 'user', content: userPrompt },
     ];
 
+    op.tick('chat_start');
+    op.chat('start', {
+      provider: activeProvider,
+      endpoint: providerEndpoint(activeProvider),
+      modelType: llmProvider.name,
+    });
     const result = await llmProvider.chat(messages, { timeoutMs: 120000 });
     const chatProvider = result.providerName || activeProvider;
-    if (isSummary)
-      diagnostics.event('info', 'provider.chat.succeeded', {
-        requestId,
-        provider: chatProvider,
-        endpoint: providerEndpoint(chatProvider),
-        durationMs: Date.now() - startAt,
-      });
+    op.tick('chat_succeeded');
+    op.chat('succeeded', {
+      provider: chatProvider,
+      endpoint: providerEndpoint(chatProvider),
+      durationMs: Date.now() - startAt,
+    });
     let output = String(result.content || '').trim();
 
     try {
@@ -1489,16 +1526,16 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
     output = stripReasoningArtifacts(output);
     if (!output) {
       const error = new Error('Provider returned an empty response.');
-      if (isSummary)
-        diagnostics.event('error', 'provider.chat.failed', {
-          requestId,
-          provider: activeProvider,
-          endpoint: providerEndpoint(activeProvider),
-          durationMs: Date.now() - startAt,
-          errorClassification: classifyError(error),
-          technicalCause: getErrorMessage(error),
-          fallbackAttempted,
-        });
+      op.chat('failed', {
+        provider: activeProvider,
+        endpoint: providerEndpoint(activeProvider),
+        durationMs: Date.now() - startAt,
+        errorClassification: classifyError(error),
+        technicalCause: getErrorMessage(error),
+        fallbackAttempted,
+      });
+      op.transformPhase('failed', { status: 502, errorClassification: 'empty_response' });
+      op.finish({ sent: true });
       return res
         .status(502)
         .json({ error: publicTransformError({ type, fallbackAttempted }), requestId });
@@ -1526,18 +1563,32 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
       elapsedMs,
       tokens,
     });
+
+    op.tick('response_complete');
+    op.transformPhase('completed', {
+      type,
+      provider: chatProvider,
+      model: result.model,
+      durationMs: elapsedMs,
+      outputLength: String(output).length,
+    });
+    op.finish({ sent: true });
   } catch (err) {
     console.error(`Transform/${type} error:`, err);
-    if (isSummary)
-      diagnostics.event('error', 'provider.chat.failed', {
-        requestId,
-        provider: err.providerName || activeProvider,
-        endpoint: providerEndpoint(err.providerName || activeProvider),
-        durationMs: Date.now() - startAt,
-        errorClassification: classifyError(err),
-        technicalCause: getErrorMessage(err),
-        fallbackAttempted,
-      });
+    op.chat('failed', {
+      provider: err.providerName || activeProvider,
+      endpoint: providerEndpoint(err.providerName || activeProvider),
+      durationMs: Date.now() - startAt,
+      errorClassification: classifyError(err),
+      technicalCause: getErrorMessage(err),
+      fallbackAttempted,
+    });
+    op.transformPhase('failed', {
+      status: 502,
+      errorClassification: classifyError(err),
+      technicalCause: getErrorMessage(err),
+    });
+    op.finish({ sent: true });
     res.status(502).json({ error: publicTransformError({ type, fallbackAttempted }), requestId });
   }
 });
