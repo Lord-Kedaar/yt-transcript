@@ -333,7 +333,7 @@ const TRANSCRIPT_MISSING_PATTERNS = [
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 
 app.disable('x-powered-by');
-app.set('trust proxy', true);
+app.set('trust proxy', 'loopback');
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json({ limit: '16mb' }));
 // Whitelisted favicon handler: serves ONLY the named favicon assets

@@ -76,10 +76,11 @@ test('daily limit: IPv4-mapped IPv6 normalization', async (t) => {
 });
 
 test('daily limit: day reset works for old entries', async (t) => {
-  // Pre-populate store with yesterday's data
+  // Pre-populate store with yesterday's data using a known IP hash
+  // Hash of '9.9.9.9' = '1a22570d6105dfec' (SHA256 first 16 hex chars)
   const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
   const store = {
-    'test-hash-old': { date: yesterday, count: 6 },
+    '1a22570d6105dfec': { date: yesterday, count: 6 },
   };
   fs.writeFileSync(TEST_STORE_PATH, JSON.stringify(store));
 
@@ -87,6 +88,7 @@ test('daily limit: day reset works for old entries', async (t) => {
     headers: { 'CF-Connecting-IP': '9.9.9.9' },
   });
   assert.equal(res.status, 200);
+  // The old entry from yesterday should be reset, so usedToday should be 0
   assert.equal(res.body.usedToday, 0);
 
   cleanStore();
