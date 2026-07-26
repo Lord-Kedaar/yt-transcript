@@ -7,7 +7,7 @@ import http from 'node:http';
 // ── Helpers ──────────────────────────────────────────────────────────
 
 const PROJECT_ROOT = path.resolve(import.meta.dirname, '..');
-const TEST_STORE_PATH = path.join(PROJECT_ROOT, '.ai-daily-limit.test.json');
+const TEST_STORE_PATH = path.join(PROJECT_ROOT, '.ai-daily-limit.json');
 const TEST_PORT = 4005;
 
 function cleanStore() {
