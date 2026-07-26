@@ -170,7 +170,7 @@ function detectLanguage(text) {
 // Simple JSON-file store for demo rate-limiting.
 // Stores IP hash + daily count; survives restarts; no Redis needed.
 const AI_DAILY_LIMIT_ENABLED = process.env.YTTRANSCRIPT_AI_DAILY_LIMIT_ENABLED === 'true';
-const AI_DAILY_LIMIT = Number(process.env.YTTRANSCRIPT_AI_DAILY_LIMIT) || 5;
+const AI_DAILY_LIMIT = Number(process.env.YTTRANSCRIPT_AI_DAILY_LIMIT) || 6;
 const AI_LIMIT_STORE_PATH = path.join(__dirname, '.ai-daily-limit.json');
 const AI_CONTACT_EMAIL = process.env.YTTRANSCRIPT_CONTACT_EMAIL || 'kontakt@radoslaw-pleskot.com';
 const PROJECT_DESCRIPTION_URL =
@@ -204,17 +204,31 @@ function todayUtc() {
 }
 
 // Resolve client IP, honouring X-Forwarded-For behind a trusted proxy.
-// Only trusts X-Forwarded-For when CORS_ORIGIN is a specific domain (not "*").
+// Prefers CF-Connecting-IP (set by Cloudflare edge, most reliable behind Cloudflare Tunnel).
+// Falls back to the last entry in X-Forwarded-For (Cloudflare appends its IP as the last entry).
+// Falls back to req.ip (resolved by Express trust proxy setting).
+// Falls back to req.socket.remoteAddress.
 function clientIp(req) {
-  const trustProxy = CORS_ORIGIN !== '*';
-  let ip = req.ip || req.socket?.remoteAddress || '';
-  if (trustProxy && req.headers['x-forwarded-for']) {
-    // Take the first (original client) IP
-    ip = req.headers['x-forwarded-for'].split(',')[0].trim();
+  // CF-Connecting-IP is set by Cloudflare edge — most reliable behind Cloudflare Tunnel
+  const cfIp = req.headers['cf-connecting-ip'];
+  if (cfIp && typeof cfIp === 'string' && cfIp.trim()) {
+    let ip = cfIp.trim();
+    if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+    return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 16);
   }
-  // Normalize IPv4-mapped IPv6 addresses (::ffff:x.x.x.x) to plain IPv4
+  // Fallback: last entry in X-Forwarded-For (Cloudflare appends its IP as the last entry)
+  const xff = req.headers['x-forwarded-for'];
+  if (xff && typeof xff === 'string' && xff.trim()) {
+    const ips = xff.split(',').map(s => s.trim()).filter(Boolean);
+    if (ips.length > 0) {
+      let ip = ips[ips.length - 1]; // last = closest to proxy = most trustworthy
+      if (ip.startsWith('::ffff:')) ip = ip.slice(7);
+      return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 16);
+    }
+  }
+  // Final fallback: Express-resolved IP (trust proxy setting) or socket remote address
+  let ip = req.ip || req.socket?.remoteAddress || '';
   if (ip.startsWith('::ffff:')) ip = ip.slice(7);
-  // Hash to avoid storing raw IPs; keep only last 16 hex chars
   return crypto.createHash('sha256').update(ip).digest('hex').slice(0, 16);
 }
 
@@ -319,6 +333,7 @@ const TRANSCRIPT_MISSING_PATTERNS = [
 const RETRYABLE_STATUS_CODES = new Set([408, 425, 429, 500, 502, 503, 504, 529]);
 
 app.disable('x-powered-by');
+app.set('trust proxy', true);
 app.use(cors({ origin: CORS_ORIGIN }));
 app.use(express.json({ limit: '16mb' }));
 // Whitelisted favicon handler: serves ONLY the named favicon assets
