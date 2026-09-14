@@ -9,6 +9,15 @@
 
 # STATE_LOG — ytTranscript
 
+## 2026-09-14 — fix: „The string did not match the expected pattern." (WebKit DOMException + martwy fallback oMLX)
+
+- **Co:** Błąd UI zgłoszony przez Radosława. Dwie warstwy: **(1) Frontend** — `res.json()` wywoływane na nie-JSON ciele (Cloudflare 502 `error code: 502`, `text/plain`) rzuca w WebKit/Safari `DOMException SyntaxError` o treści „The string did not match the expected pattern."; parsowanie następowało PRZED sprawdzeniem `res.ok`, więc surowy komunikat WebKit trafiał do `setError()` i do UI. Dodano `readJsonSafe(res)` (odczyt jako tekst → `JSON.parse` w `try/catch`) oraz `failureMessage(res, data, parsed, kind)`; zastąpiono wszystkie bezpośrednie `res.json()` w obsłudze `/api/transcript`, `/api/transform` (w tym gałąź 429), `/api/tts` oraz `probeHealth` (`/api/health`, gdzie `!parsed` jest teraz traktowane jak offline). **(2) Backend** — konto Mistral zwraca `429 Rate limit exceeded` z nagłówkiem `x-ratelimit-limit-req-minute: 0` (limit minutowy = 0; nie jest to chwilowy throttling), a fallback oMLX na Lenovo wskazywał `OMLX_URL=http://127.0.0.1:8585` — port, na którym oMLX **nie nasłuchuje** (oMLX działa na Macu). Fallback nie mógł się podnieść → `/api/transform` zwracał 502/503. Zmieniono `OMLX_URL` na `http://100.127.3.65:8585` (Mac via Tailscale). Dodatkowo `.env.example` nadal deklarował `LLM_PROVIDER_FALLBACK=omlx` mimo komentarza „OFF by default" — niespójność pozostawiona do decyzji (patrz Ryzyka).
+- **Plik:** `index.html` (nowe `readJsonSafe` + `failureMessage`, 4 call-site), `.env` (Lenovo: `OMLX_URL`)
+- **Build:** frontend bez buildu (root `index.html` serwowany wprost); Lenovo `./manage.sh restart` → `npm run build` OK (Vite: 287 modułów, 14,47 s), proces nasłuchuje na `*:4002`
+- **Preview:** `https://yttranscript.radoslaw-pleskot.com/` serwuje fix (`readJsonSafe` ×5, `failureMessage` ×4); `POST /api/transform` → 200 dla 2 / 200 / 393 snippetów (11,3 s / 33,8 s / 63,9 s, provider=oMLX); `GET /api/health` → 200, provider=oMLX; licznik providera `successCount: 13, failureCount: 0`; reprodukcja A/B w WebKit: stara wersja → komunikat użytkownika, nowa → „AI service error (HTTP 502). Try again in a moment."
+- **Rollback:** Mac `.backups/json-error-fix-20260914-052645/`; Lenovo `.backups/json-error-fix-20260914-055204/` + `.env.backup-pre-omlx-tailscale-20260914-055506`
+- **Raport:** `docs/RCA_reconstruct_pattern_mismatch.md`
+
 ## 2026-07-07 — ytTranscript — chore/update-favicons: favicon + Apple touch icon + whitelisted asset handler
 
 - **Co:** Dodano favicons i Apple touch icon z paczki `favicon_pack_portfolio_projects_v2/yttranscript/` do repo root (10 plików obok root `index.html`): `favicon.ico`, `favicon-light.svg`, `favicon-dark.svg`, `apple-touch-icon.png`, `favicon-{16,32,48,64,192,512}.png`. W `index.html` wstawione tagi `<link rel="icon">` z media-query dark/light oraz fallback `.ico` i `<link rel="apple-touch-icon">`. W `server.js` dodany whitelist handler routujący wyłącznie 10 nazw assetów przez `res.sendFile` z `__dirname` (obrona: `FAVICON_ASSETS` Set re-check wewnątrz handlera dla defence-in-depth).
@@ -162,3 +171,12 @@ curl http://127.0.0.1:4000/api/health
 - **Build:** canonical staging Lenovo: `npm run build` — Vite 287 modules, 11.80s; `node --check server.js` OK.
 - **Preview:** `127.0.0.1`, `[::1]`, publiczne `/` oraz `/api/health` — HTTP 200 po restarcie przez `yt-transcript.service`.
 - **Raport:** `/tmp/yt-transcript-canonical-rollback-plan.md`; rollback: `git revert <commit>` + `systemctl --user restart yt-transcript.service`.
+
+## 2026-07-23 — ytTranscript — feat: state machine recovery Mistral ↔ oMLX
+
+- **Co:** Zaimplementowano bezpieczny recovery z fallbacku oMLX do primary Mistral zgodnie z werdyktem Mordaxa CONDITIONAL_APPROVE. Zastąpiono buildProviderChain.active() z provider-state-machine.js implementującą PRIMARY→FALLBACK_OPEN→HALF_OPEN→PRIMARY state machine z monotonicz cooldown, bounded backoff/jitter, single-flight probe, pełną macierzą błędów i strukturalną telemetrią JSONL. Naprawiono modelType w logach na activeProvider, dodano configuredProvider/activeProvider/providerStateMachine/providerCounters do /api/health.
+- **Plik:** provider-state-machine.js (nowy, 587 linii), server.js (integracja state machine, poprawka modelType, rozbudowa /api/health), test/provider-state-machine.test.js (nowy, 20 testów), docs/ADR_PROVIDER_RECOVERY_STATE_MACHINE.md (nowy ADR), docs/REPORT_MISTRAL_FALLBACK_RECOVERY_DEPLOY_FINAL.md (final raport), STATE_LOG.md (ten wpis)
+- **Build:** 95 testów pass (20 state machine + 69 diagnostics + 6 fallback), 0 lint errors, build OK (12.91s na Lenovo)
+- **Preview:** Lenovo `http://localhost:4002/api/health` → 200, providerState=PRIMARY, providerStateMachine=PRIMARY, activeProvider=Mistral, configuredProvider=Mistral, model=mistral-small-2603. Systemd aktywny (MainPID=1895919), WorkingDirectory=yt-transcript-release-a558150-20260723T190911Z, uptime ~10 min.
+- **Raport:** docs/REPORT_MISTRAL_FALLBACK_RECOVERY_DEPLOY_FINAL.md
+- **Rollback:** `sed -i 's|WorkingDirectory=.*|WorkingDirectory=/srv/storage/AI_Projects/yt-transcript-release-1bdce40-20260723T102151Z|' /home/radek/.config/systemd/user/yt-transcript.service && systemctl --user daemon-reload && systemctl --user restart yt-transcript.service` lub `git revert a558150`

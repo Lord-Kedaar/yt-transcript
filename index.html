@@ -1820,6 +1820,36 @@
       }
     }
 
+    /* SAFE JSON READER
+       Not every failure comes from our own Express app. Cloudflare and the
+       Tunnel return HTML/plain-text error pages (e.g. "error code: 502") that
+       are not JSON. Calling res.json() on those throws a raw WebKit DOMException
+       whose message leaks straight into the UI as:
+         WebKit/Safari : "The string did not match the expected pattern."
+         Chromium      : "Unexpected token '<' ... is not valid JSON"
+       Neither tells the user anything. Read the body as text first, parse, and
+       fall back to an explicit HTTP-status message when the body is not JSON. */
+    async function readJsonSafe(res) {
+      const raw = await res.text().catch(() => '');
+      try {
+        return { data: raw ? JSON.parse(raw) : {}, parsed: true };
+      } catch (_) {
+        return { data: null, parsed: false };
+      }
+    }
+
+    /* Build a human-readable message for a failed response, preferring the
+       server's own error text and falling back to the HTTP status. */
+    function failureMessage(res, data, parsed, kind) {
+      if (parsed && data) {
+        const msg = data.error || data.message;
+        if (msg) return msg;
+      }
+      if (kind === 'transcript') return `Could not fetch the transcript (HTTP ${res.status}). Check the link and try again.`;
+      if (kind === 'tts') return `Audio generation failed (HTTP ${res.status}). Try again in a moment.`;
+      return `AI service error (HTTP ${res.status}). Try again in a moment.`;
+    }
+
     function setLoading(v) {
       S.loading = v;
       urlInput.disabled = v;
@@ -2171,8 +2201,8 @@
 
       try {
         const res = await fetch(`/api/transcript?url=${encodeURIComponent(S.url.trim())}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to fetch transcript.');
+        const { data, parsed } = await readJsonSafe(res);
+        if (!res.ok) throw new Error(failureMessage(res, data, parsed, 'transcript'));
         S.transcriptData = data;
         S.reconstructedText = '';
         S.summaryText = '';
@@ -2213,15 +2243,17 @@
             title: S.transcriptData.title || ''
           })
         });
-        const data = await res.json();
+        const { data, parsed } = await readJsonSafe(res);
         if (!res.ok) {
           // Surface 429 daily-limit error with contact info
           if (res.status === 429) {
-            throw new Error(data.message || data.error || 'Daily demo limit reached.');
+            throw new Error((parsed && (data.message || data.error)) || 'Daily demo limit reached.');
           }
-          // Distinguish LLM provider errors from transcript fetch errors
-          const providerMsg = data?.error || data?.message || `LLM provider error (HTTP ${res.status}).`;
-          throw new Error(providerMsg);
+          // Distinguish LLM provider errors from transcript fetch errors.
+          // Non-JSON bodies (Cloudflare 502 HTML, "error code: 502" text) have no
+          // message of their own — fall back to an explicit status-based message
+          // instead of leaking a raw JSON.parse / DOMException string.
+          throw new Error(failureMessage(res, data, parsed, 'ai'));
         }
         // Capture metadata for badge (brief §17). elapsedMs from server is
         // authoritative (server measures around the chat call); client startAt
@@ -2415,8 +2447,8 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ type, language: b.lang, text }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Generation failed.');
+        const { data, parsed } = await readJsonSafe(res);
+        if (!res.ok) throw new Error(failureMessage(res, data, parsed, 'tts'));
         const audioUrl = data.audioUrl;
         b.audio.src = audioUrl;
         b.audio.style.display = '';
@@ -2586,9 +2618,9 @@
           clearTimeout(tid);
         }
         if (mySeq !== probeSeq) return;        // stale: discard before parse
-        const data = await res.json().catch(() => ({}));
+        const { data, parsed } = await readJsonSafe(res);
         if (mySeq !== probeSeq) return;        // stale after parse
-        if (!res.ok) {
+        if (!res.ok || !parsed) {
           applyProviderStatus('offline', { error: 'HTTP ' + res.status });
           applyFeatureGating(false, false);
           return;
