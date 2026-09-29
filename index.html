@@ -2190,7 +2190,12 @@
         summaryBody.innerHTML = '';
         summaryFooter.style.display = 'none';
         summaryMetaBadge.style.display = 'none';
-        // Hide summary without touching viewSwitcher — setActiveView decides visibility.
+        // The view switcher has to be re-synced here too: it only disables the
+        // Summary tab when S.summaryText is empty, so returning without calling
+        // it left a live tab pointing at nothing after a rollback. The
+        // transcript branch does not have this problem because it always runs
+        // syncViewSwitcher() at the end.
+        syncViewSwitcher();
         return;
       }
       summaryBody.innerHTML = md(S.summaryText);
