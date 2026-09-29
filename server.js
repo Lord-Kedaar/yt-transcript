@@ -1666,36 +1666,20 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
       .json({ error: publicTransformError({ type, fallbackAttempted }), requestId });
   }
 
-  const promptDef = TRANSFORM_PROMPTS[type];
-  const rawText = snippets.map(s => String(s.text || '')).join(' ');
-  const userPrefix = promptDef.userPrefix;
-  const userSuffix =
-    type === 'reconstruct'
-      ? 'Use paragraphs. Keep every meaning intact.'
-      : 'STRUCTURE: First write exactly one introductory paragraph (3-5 sentences) about the speaker/author/channel and the topic of the video. Then write the rest as thematic sections. Each section must use a bold header like **Theme Name:** followed by a concise paragraph of 2-4 sentences. Use blank lines between sections. Do NOT use bullet points. Do NOT return one continuous block of text.';
-
-  // Determine target language for translation mode
-  const targetLang = (req.body.targetLang || 'pl').toLowerCase();
-  const allowedLangs = ['pl', 'de', 'en'];
-  const translateTo = mode === 'translate' && allowedLangs.includes(targetLang) ? targetLang : null;
-
-  // Build system prompt based on type and target language
-  const systemPrompt =
-    type === 'reconstruct'
-      ? buildReconstructSystemPrompt(translateTo)
-      : buildSummarizeSystemPrompt(translateTo);
-
-  // Build user prompt: prefix + raw text + suffix
-  const userPrompt = `${userPrefix}\n\n${rawText}\n\n${userSuffix}`;
+  // Prompt construction is shared with the streaming endpoint. Keeping a second
+  // copy here would let the two routes drift apart and return different text for
+  // the same input.
+  const { messages, rawText } = buildTransformMessages({
+    type,
+    mode,
+    snippets,
+    targetLang: req.body.targetLang,
+  });
 
   // Capture timing just before the chat call so elapsedMs reflects actual work.
   const startAt = Date.now();
 
   try {
-    const messages = [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userPrompt },
-    ];
     op.tick('chat_start');
     op.chat('start', {
       provider: activeProvider,
@@ -1870,35 +1854,52 @@ app.post(
     const cacheKey = `${type}:${mode}:${req.body.targetLang || 'pl'}:${hashKey(rawText)}`;
     const startAt = Date.now();
 
+    // Abort upstream work if the browser goes away (tab closed, user navigated).
+    // The listener is registered BEFORE flushHeaders() on purpose: a client that
+    // disconnects in the window between flushing headers and attaching the
+    // listener would otherwise close unnoticed and let the request run to
+    // completion for nobody.
+    const clientAbort = new AbortController();
+    let clientGone = false;
+    res.on('close', () => {
+      if (!res.writableEnded) {
+        clientGone = true;
+        op.disconnect('client_abort');
+        clientAbort.abort();
+      }
+    });
+
     // From here on the response is an event stream.
     res.status(200);
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
+    if (clientAbort.signal.aborted) {
+      // Already gone before we started writing — nothing to stream to.
+      op.transformPhase('aborted', { streaming: true, beforeFirstDelta: true });
+      op.finish({ sent: false });
+      return undefined;
+    }
     res.flushHeaders();
     if (typeof res.socket?.setNoDelay === 'function') res.socket.setNoDelay(true);
 
+    // `writableEnded` alone does not cover a destroyed socket, and writing to a
+    // torn-down response throws. Both flags are checked before every write.
+    const canWrite = () => !res.writableEnded && !res.destroyed && !clientGone;
+
     const sse = (event, data) => {
-      if (res.writableEnded) return;
+      if (!canWrite()) return false;
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      return true;
     };
 
     // Keep-alive comments hold the connection open through Cloudflare and any
     // intermediate proxy while a long prefill produces no content yet.
     const keepAlive = setInterval(() => {
-      if (res.writableEnded) return;
+      if (!canWrite()) return;
       res.write(': keep-alive\n\n');
     }, 10000);
-
-    // Abort upstream work if the browser goes away (tab closed, user navigated).
-    const clientAbort = new AbortController();
-    res.on('close', () => {
-      if (!res.writableEnded) {
-        op.disconnect('client_abort');
-        clientAbort.abort();
-      }
-    });
 
     let emitted = false;
     try {
@@ -1931,6 +1932,28 @@ app.post(
       const usage = result.usage || null;
       const tokens = usage?.total_tokens ?? null;
       const output = String(result.content || '').trim();
+
+      // The stream is only complete if the upstream said so. fetchChatStream
+      // already rejects a truncated stream, so reaching this point means we have
+      // a real completion — but a client that vanished mid-flight must still not
+      // produce a cache entry or a `done` event.
+      if (clientAbort.signal.aborted || res.writableEnded || res.destroyed) {
+        op.chat('failed', {
+          provider: chatProvider,
+          endpoint: providerEndpoint(chatProvider),
+          durationMs: elapsedMs,
+          errorClassification: 'abort',
+          technicalCause: 'client_disconnected_before_completion',
+          streaming: true,
+        });
+        op.transformPhase('aborted', {
+          streaming: true,
+          afterFirstDelta: emitted,
+          cacheWritten: false,
+        });
+        op.finish({ sent: false });
+        return undefined;
+      }
 
       if (!output) {
         op.chat('failed', {

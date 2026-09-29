@@ -2231,6 +2231,13 @@
        to ~1 paint per animation frame and the final render always happens last. */
     let streamPreviewPending = null;
     let streamPreviewRaf = null;
+    function cancelStreamPreview() {
+      if (streamPreviewRaf !== null) {
+        cancelAnimationFrame(streamPreviewRaf);
+        streamPreviewRaf = null;
+      }
+      streamPreviewPending = null;
+    }
     function scheduleStreamPreview(type, text) {
       streamPreviewPending = { type, text };
       if (streamPreviewRaf !== null) return;
@@ -2249,6 +2256,20 @@
       });
     }
 
+    /* Rolls the panel back to the last completed answer after a failed stream.
+       Partial text must not survive a failure: it would look like a finished
+       answer and could be exported or read aloud. */
+    function revertStreamPreview(type, previousText) {
+      cancelStreamPreview();
+      if (type === 'reconstruct') {
+        S.reconstructedText = previousText;
+        renderTranscript();
+      } else {
+        S.summaryText = previousText;
+        renderSummary();
+      }
+    }
+
     async function readTransformStream(res, type, onDone) {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
@@ -2256,6 +2277,8 @@
       let full = '';
       let done = null;
       let streamError = null;
+      // The answer that was on screen before this request — restored on failure.
+      const previousText = type === 'reconstruct' ? S.reconstructedText : S.summaryText;
 
       for (;;) {
         const { done: finished, value } = await reader.read();
@@ -2281,12 +2304,27 @@
           } else if (name === 'done') {
             done = data;
           } else if (name === 'error') {
-            streamError = new Error(data.error || 'AI service error.');
+            const err = new Error(data.error || 'AI service error.');
+            // The backend tells us whether partial text already reached the
+            // screen; either way the stream did not complete, so the panel is
+            // rolled back rather than left showing a half-finished answer.
+            err.afterFirstDelta = data.afterFirstDelta === true;
+            streamError = err;
           }
         }
       }
-      if (streamError) throw streamError;
-      if (!done) throw new Error('The AI stream ended unexpectedly. Please try again.');
+      if (streamError) {
+        revertStreamPreview(type, previousText);
+        throw streamError;
+      }
+      if (!done) {
+        // Connection dropped without a terminal event — same rollback.
+        revertStreamPreview(type, previousText);
+        throw new Error('The AI stream ended unexpectedly. Please try again.');
+      }
+      // Drop any queued preview so it cannot repaint stale text after the
+      // finalized answer is rendered.
+      cancelStreamPreview();
       onDone(done, full);
     }
 

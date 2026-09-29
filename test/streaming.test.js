@@ -15,6 +15,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { consumeOpenAiSse, fetchChatStream } from '../sse-stream.js';
 import { createProviderStateMachine, STATES } from '../provider-state-machine.js';
 
@@ -92,8 +93,10 @@ test('captures finish_reason when the upstream reports it', async () => {
   assert.equal(out.finishReason, 'length');
 });
 
-test('throws on a stream that produced no events at all', async () => {
-  const res = sseResponse([': keep-alive\n\n', 'data: [DONE]\n\n']);
+test('throws on a stream that produced no bytes at all', async () => {
+  // A genuinely empty response body — distinct from a stream that ends early,
+  // which is covered by the IncompleteStreamError tests below.
+  const res = sseResponse([]);
   await assert.rejects(() => consumeOpenAiSse(res, {}), /empty stream/);
 });
 
@@ -101,9 +104,10 @@ test('throws on a stream that produced no events at all', async () => {
 
 test('idle timeout does NOT fire while chunks keep arriving, even if slow', async () => {
   // Three chunks, each arriving well inside the window. Total elapsed time
-  // exceeds the window — that must NOT be treated as a stall.
+  // exceeds the window — that must NOT be treated as a stall. The stream ends
+  // with a proper terminator so it is a genuine completion, not a truncation.
   let i = 0;
-  const chunks = [delta('slow-'), delta('but-'), delta('alive')];
+  const chunks = [delta('slow-'), delta('but-'), delta('alive'), 'data: [DONE]\n\n'];
   const body = new ReadableStream({
     async pull(controller) {
       if (i >= chunks.length) {
@@ -178,7 +182,157 @@ test('request body enables streaming and usage reporting', async () => {
   assert.equal(captured.model, 'test-model');
 });
 
-// ─── State machine: streaming failover semantics ────────────────────
+// ─── Completion contract (Mordax F1/F2) ────────────────────────────
+
+test('REJECT-F2: stream that closes early is NOT a successful completion', async () => {
+  // One valid delta, then the connection dies with no [DONE] and no finish_reason.
+  const res = sseResponse([delta('partial answer only')]);
+  await assert.rejects(
+    () => consumeOpenAiSse(res, {}),
+    err => err.name === 'IncompleteStreamError' && err.code === 'ERR_INCOMPLETE_STREAM',
+  );
+});
+
+test('REJECT-F2: finish_reason alone (no [DONE]) still counts as complete', async () => {
+  const res = sseResponse([
+    delta('complete answer'),
+    frame({ choices: [{ delta: {}, index: 0, finish_reason: 'stop' }] }),
+  ]);
+  const out = await consumeOpenAiSse(res, {});
+  assert.equal(out.text, 'complete answer');
+  assert.equal(out.finishReason, 'stop');
+  assert.equal(out.sawDoneMarker, false);
+});
+
+test('REJECT-F2: [DONE] alone (no finish_reason) counts as complete', async () => {
+  const res = sseResponse([delta('answer'), 'data: [DONE]\n\n']);
+  const out = await consumeOpenAiSse(res, {});
+  assert.equal(out.text, 'answer');
+  assert.equal(out.sawDoneMarker, true);
+});
+
+test('REJECT-F2: partial text is not reported as the result on early close', async () => {
+  const res = sseResponse([delta('this must not be cached')]);
+  let caught = null;
+  try {
+    await consumeOpenAiSse(res, {});
+  } catch (e) {
+    caught = e;
+  }
+  assert.ok(caught, 'must throw');
+  // The partial text rides on the error for diagnostics, never as a return value.
+  assert.equal(caught.partialText, 'this must not be cached');
+});
+
+// ─── Abort semantics (Mordax F1) ────────────────────────────────────
+
+test('REJECT-F1: abort AFTER a delta is an error, never a successful result', async () => {
+  const controller = new AbortController();
+  let i = 0;
+  const chunks = [delta('first'), delta('second'), delta('third')];
+  const body = new ReadableStream({
+    async pull(c) {
+      if (i >= chunks.length) {
+        c.close();
+        return;
+      }
+      const chunk = chunks[i++];
+      // Abort midway, exactly as a browser disconnect would.
+      if (i === 2) controller.abort();
+      c.enqueue(encoder.encode(chunk));
+    },
+  });
+  const res = new Response(body, { status: 200 });
+  await assert.rejects(
+    () => consumeOpenAiSse(res, { signal: controller.signal }),
+    err => err.name === 'AbortError',
+  );
+});
+
+test('REJECT-F1: abort BEFORE any content is an error', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const res = sseResponse([delta('never seen')]);
+  await assert.rejects(
+    () => consumeOpenAiSse(res, { signal: controller.signal }),
+    err => err.name === 'AbortError',
+  );
+});
+
+test('REJECT-F1: aborting before start never issues the upstream request', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let called = false;
+  const fakeFetch = async () => {
+    called = true;
+    return sseResponse([delta('x'), 'data: [DONE]\n\n']);
+  };
+  await assert.rejects(
+    () =>
+      fetchChatStream('http://x/v1/chat/completions', {
+        model: 'm',
+        messages: [],
+        signal: controller.signal,
+        fetchImpl: fakeFetch,
+      }),
+    err => err.name === 'AbortError',
+  );
+  assert.equal(called, false, 'an already-aborted request must not reach the provider');
+});
+
+// ─── Header-phase guard (Mordax answer #1) ──────────────────────────
+
+test('REJECT-A1: provider that never sends headers hits the header timeout', async () => {
+  // A real fetch rejects when the signal fires; this stub does the same so the
+  // test exercises our timer rather than hanging on a promise that never settles.
+  const fakeFetch = (_url, opts) =>
+    new Promise((_resolve, reject) => {
+      opts.signal.addEventListener('abort', () => {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        reject(err);
+      });
+    });
+  await assert.rejects(
+    () =>
+      fetchChatStream('http://x/v1/chat/completions', {
+        model: 'm',
+        messages: [],
+        fetchImpl: fakeFetch,
+        headersTimeoutMs: 60,
+      }),
+    err => err.name === 'TimeoutError' && /headers/.test(err.message),
+  );
+});
+
+// ─── Prompt parity between the two routes (Mordax F4) ───────────────
+
+test('REJECT-F4: both endpoints build prompts through the same helper', async () => {
+  // Guards against re-duplication: a second copy of the prompt construction in
+  // the buffered route would silently let the two routes drift apart.
+  const src = await readFile(new URL('../server.js', import.meta.url), 'utf8');
+  const calls = src.match(/buildTransformMessages\(/g) || [];
+  // one definition + one call site per endpoint (buffered + streaming)
+  assert.ok(
+    calls.length >= 3,
+    `expected buildTransformMessages to be defined once and called by both endpoints, saw ${calls.length}`,
+  );
+  assert.ok(
+    /app\.post\(\s*['"]\/api\/transform['"]/.test(src) &&
+      /app\.post\(\s*['"]\/api\/transform\/stream['"]/.test(src),
+    'both routes must still exist',
+  );
+});
+
+test('REJECT-F3: error event carries afterFirstDelta for the UI to act on', async () => {
+  const src = await readFile(new URL('../server.js', import.meta.url), 'utf8');
+  assert.ok(
+    /afterFirstDelta:\s*emitted/.test(src),
+    'server must tell the client whether partial text was already sent',
+  );
+});
+
+// ─── Provider failover semantics (unchanged) ────────────────────────
 
 function buildChain(primary, fallback) {
   const events = [];

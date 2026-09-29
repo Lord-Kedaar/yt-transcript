@@ -21,6 +21,15 @@
  * `idleTimeoutMs` guards the GAP BETWEEN CHUNKS, not total duration. A long
  * prefill is legitimate work, not a hang — bounding total time would defeat the
  * entire purpose of streaming.
+ *
+ * Completion contract: a truncated stream is NOT a successful stream. The loop
+ * can end for four different reasons and they must not be conflated:
+ *   1. client/upstream abort      → AbortError (never a success)
+ *   2. idle gap exceeded          → TimeoutError
+ *   3. upstream closed early      → incomplete-stream error (no terminal marker)
+ *   4. genuine completion         → [DONE] and/or a finish_reason was observed
+ * Without (4) a dropped connection could be cached and shown as a finished
+ * answer, which is worse than an honest error.
  */
 export async function consumeOpenAiSse(response, { onDelta, idleTimeoutMs = 120000, signal } = {}) {
   if (!response.body) {
@@ -32,7 +41,8 @@ export async function consumeOpenAiSse(response, { onDelta, idleTimeoutMs = 1200
   let text = '';
   let usage = null;
   let finishReason = null;
-  let sawAnyEvent = false;
+  let sawAnything = false;
+  let sawDoneMarker = false;
   let idleTimer = null;
   let idleFired = false;
 
@@ -48,9 +58,13 @@ export async function consumeOpenAiSse(response, { onDelta, idleTimeoutMs = 1200
     idleTimer = null;
   };
 
+  const makeAbortError = () =>
+    Object.assign(new Error('Streaming request was aborted'), { name: 'AbortError' });
+
   const onAbort = () => {
     reader.cancel().catch(() => {});
   };
+  const wasAborted = () => Boolean(signal?.aborted);
   if (signal) {
     if (signal.aborted) onAbort();
     else signal.addEventListener('abort', onAbort, { once: true });
@@ -62,6 +76,7 @@ export async function consumeOpenAiSse(response, { onDelta, idleTimeoutMs = 1200
       const { done, value } = await reader.read();
       if (done) break;
       armIdle();
+      sawAnything = true;
       buffer += decoder.decode(value, { stream: true });
 
       // SSE frames are separated by a blank line. Process every complete frame.
@@ -74,14 +89,16 @@ export async function consumeOpenAiSse(response, { onDelta, idleTimeoutMs = 1200
           if (!line || line.startsWith(':')) continue; // comment / keep-alive
           if (!line.startsWith('data:')) continue;
           const payload = line.slice(5).trim();
-          if (payload === '[DONE]') continue;
+          if (payload === '[DONE]') {
+            sawDoneMarker = true;
+            continue;
+          }
           let parsed;
           try {
             parsed = JSON.parse(payload);
           } catch {
             continue; // tolerate partial/odd frames rather than killing the stream
           }
-          sawAnyEvent = true;
           if (parsed.usage) usage = parsed.usage;
           const choice = (parsed.choices || [])[0];
           if (!choice) continue;
@@ -100,20 +117,39 @@ export async function consumeOpenAiSse(response, { onDelta, idleTimeoutMs = 1200
     if (signal) signal.removeEventListener?.('abort', onAbort);
   }
 
+  // Order matters: an abort must never be reported as success, even when the
+  // abort happened after we had already received (partial) content.
+  if (wasAborted()) throw makeAbortError();
   if (idleFired) {
     const err = new Error(`Upstream stream idle for more than ${idleTimeoutMs}ms`);
     err.name = 'TimeoutError';
     throw err;
   }
-  if (!sawAnyEvent) {
+  if (!sawAnything) {
     throw new Error('Upstream returned an empty stream.');
   }
-  return { text, usage, finishReason };
+  // A stream that stops mid-answer is a failure, not a short answer. Verified
+  // against both Mistral and oMLX: a complete stream always carries `[DONE]`
+  // and a terminal finish_reason.
+  if (!sawDoneMarker && !finishReason) {
+    const err = new Error(
+      'Upstream stream ended before completion (no [DONE] marker and no finish_reason).',
+    );
+    err.name = 'IncompleteStreamError';
+    err.code = 'ERR_INCOMPLETE_STREAM';
+    err.partialText = text;
+    throw err;
+  }
+  return { text, usage, finishReason, sawDoneMarker };
 }
 
 /**
  * POST to an OpenAI-compatible /chat/completions endpoint and stream deltas.
  * `signal` lets the caller abort when the browser disconnects.
+ *
+ * `headersTimeoutMs` bounds only the wait for response headers. Without it a
+ * provider that accepts the connection and then never answers would hang until
+ * the client gives up — the idle guard cannot help because no body exists yet.
  */
 export async function fetchChatStream(
   url,
@@ -125,25 +161,57 @@ export async function fetchChatStream(
     maxTokens = 8192,
     onDelta,
     idleTimeoutMs = 120000,
+    headersTimeoutMs = 120000,
     signal,
     fetchImpl,
   } = {},
 ) {
   const doFetch = fetchImpl || fetch;
-  const response = await doFetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify({
-      model,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-      stream: true,
-      // Verified on both Mistral and oMLX: returns `usage` in the final chunk.
-      stream_options: { include_usage: true },
-    }),
-    signal,
-  });
+
+  if (signal?.aborted) {
+    throw Object.assign(new Error('Streaming request was aborted before start'), {
+      name: 'AbortError',
+    });
+  }
+
+  // Guard the header phase separately from the body phase.
+  const headerGuard = new AbortController();
+  const headerTimer = setTimeout(() => {
+    headerGuard.abort();
+    headerGuard.abortedByTimer = true;
+  }, headersTimeoutMs);
+  const combinedSignal = signal
+    ? AbortSignal.any([signal, headerGuard.signal])
+    : headerGuard.signal;
+
+  let response;
+  try {
+    response = await doFetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify({
+        model,
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+        stream: true,
+        // Verified on both Mistral and oMLX: returns `usage` in the final chunk.
+        stream_options: { include_usage: true },
+      }),
+      signal: combinedSignal,
+    });
+  } catch (err) {
+    if (headerGuard.abortedByTimer && !signal?.aborted) {
+      const timeoutErr = new Error(
+        `Upstream did not send response headers within ${headersTimeoutMs}ms`,
+      );
+      timeoutErr.name = 'TimeoutError';
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(headerTimer);
+  }
 
   if (!response.ok) {
     const raw = await response.text().catch(() => '');
@@ -163,7 +231,9 @@ export async function fetchChatStream(
   const { text, usage, finishReason } = await consumeOpenAiSse(response, {
     onDelta,
     idleTimeoutMs,
-    signal,
+    // The combined signal keeps the caller's abort observable downstream while
+    // the header timer is already disarmed.
+    signal: combinedSignal,
   });
   return { content: text, usage, finishReason };
 }
