@@ -552,7 +552,7 @@
       gap: 0.625rem;
       padding: 0.625rem 1rem;
       background: var(--accent-soft);
-      border-top: 1px solid rgba(132, 204, 22, 0.2);
+      border-bottom: 1px solid rgba(132, 204, 22, 0.2);
       font-size: 0.78rem;
       color: var(--accent);
     }
@@ -1520,14 +1520,14 @@
         </div>
       </div>
 
-      <div class="transcript-body" id="transcriptBody" role="region" aria-label="Transcript content" aria-live="polite">
-        <div class="transcript-raw" id="transcriptRaw"></div>
-        <div class="transcript-reconstructed prose" id="transcriptReconstructed" style="display:none"></div>
-      </div>
-
       <div class="ai-progress" id="aiProgress" style="display:none" role="status" aria-live="polite">
         <div class="ai-progress-spinner" aria-hidden="true"></div>
         <span id="aiProgressText"></span>
+      </div>
+
+      <div class="transcript-body" id="transcriptBody" role="region" aria-label="Transcript content" aria-live="polite">
+        <div class="transcript-raw" id="transcriptRaw"></div>
+        <div class="transcript-reconstructed prose" id="transcriptReconstructed" style="display:none"></div>
       </div>
 
       <!-- TTS inline bar for AI Reconstruction -->
@@ -2218,7 +2218,169 @@
       }
     }
 
-    /* API: TRANSFORM */
+    /* API: TRANSFORM — SSE streaming with fallback to the buffered endpoint.
+       Streaming exists because a large transcript can spend ~70s in model
+       prefill before the first token: buffered, the browser (and Cloudflare)
+       would wait on silence and the edge closes at ~100s. With a stream the
+       server keeps the connection alive and text appears as it is produced.
+       If anything about streaming fails BEFORE the first token, we transparently
+       retry the request through the original buffered endpoint — the user never
+       sees a difference except that the answer was not streamed. */
+    /* Rendering a 1500-token answer produces hundreds of deltas. Re-rendering the
+       whole panel on each one would thrash the DOM, so previews are coalesced
+       to ~1 paint per animation frame and the final render always happens last. */
+    let streamPreviewPending = null;
+    let streamPreviewRaf = null;
+    function scheduleStreamPreview(type, text) {
+      streamPreviewPending = { type, text };
+      if (streamPreviewRaf !== null) return;
+      streamPreviewRaf = requestAnimationFrame(() => {
+        streamPreviewRaf = null;
+        const pending = streamPreviewPending;
+        streamPreviewPending = null;
+        if (!pending) return;
+        if (pending.type === 'reconstruct') {
+          S.reconstructedText = pending.text;
+          renderTranscript();
+        } else {
+          S.summaryText = pending.text;
+          renderSummary();
+        }
+      });
+    }
+
+    async function readTransformStream(res, type, onDone) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let full = '';
+      let done = null;
+      let streamError = null;
+
+      for (;;) {
+        const { done: finished, value } = await reader.read();
+        if (finished) break;
+        buffer += decoder.decode(value, { stream: true });
+        let sep;
+        while ((sep = buffer.indexOf('\n\n')) !== -1) {
+          const frame = buffer.slice(0, sep);
+          buffer = buffer.slice(sep + 2);
+          let name = null, payload = null;
+          for (const line of frame.split('\n')) {
+            if (line.startsWith('event: ')) name = line.slice(7).trim();
+            else if (line.startsWith('data: ')) payload = line.slice(6);
+            // lines starting with ':' are keep-alive comments — ignore
+          }
+          if (!name || payload === null) continue;
+          let data;
+          try { data = JSON.parse(payload); } catch { continue; }
+          if (name === 'delta' && typeof data.text === 'string') {
+            full += data.text;
+            // Show partial text live, coalesced to one paint per frame.
+            scheduleStreamPreview(type, full);
+          } else if (name === 'done') {
+            done = data;
+          } else if (name === 'error') {
+            streamError = new Error(data.error || 'AI service error.');
+          }
+        }
+      }
+      if (streamError) throw streamError;
+      if (!done) throw new Error('The AI stream ended unexpectedly. Please try again.');
+      onDone(done, full);
+    }
+
+    async function doTransformStreaming(type, mode, targetLang, startAt) {
+      const res = await fetch('/api/transform/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snippets: S.transcriptData.snippets,
+          type,
+          mode,
+          targetLang: targetLang || null,
+          title: S.transcriptData.title || ''
+        })
+      });
+
+      // Pre-stream failures still arrive as ordinary HTTP statuses.
+      if (!res.ok) {
+        const { data, parsed } = await readJsonSafe(res);
+        if (res.status === 429) {
+          throw new Error((parsed && (data.message || data.error)) || 'Daily demo limit reached.');
+        }
+        throw new Error(failureMessage(res, data, parsed, 'ai'));
+      }
+      if (!res.body || !res.headers.get('content-type')?.includes('text/event-stream')) {
+        // Not a stream (proxy stripped it, older server) — fall back to the
+        // buffered endpoint so behaviour degrades instead of breaking.
+        const { data, parsed } = await readJsonSafe(res);
+        if (!res.ok) throw new Error(failureMessage(res, data, parsed, 'ai'));
+        await doTransformBuffered(type, mode, targetLang, startAt);
+        return;
+      }
+
+      await readTransformStream(res, type, (finalEvent, streamedText) => {
+        const text = finalEvent[type === 'reconstruct' ? 'reconstructed' : 'summary'] || streamedText;
+        const meta = {
+          model: finalEvent.model || null,
+          elapsedMs: typeof finalEvent.elapsedMs === 'number' ? finalEvent.elapsedMs : (Date.now() - startAt),
+          tokens: typeof finalEvent.tokens === 'number' ? finalEvent.tokens : null,
+        };
+        if (type === 'reconstruct') {
+          S.reconstructedText = text;
+          S.lastReconstructionMeta = meta;
+          setActiveView('reconstruction');
+        } else {
+          S.summaryText = text;
+          S.lastAiMeta = meta;
+          setActiveView('summary');
+        }
+        renderTranscript();
+        renderSummary();
+      });
+    }
+
+    /* Buffered transform — the original non-streaming path, kept as the
+       fallback when streaming is unavailable. Also used by the regression
+       tests as the reference implementation. */
+    async function doTransformBuffered(type, mode, targetLang, startAt) {
+      const res = await fetch('/api/transform', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          snippets: S.transcriptData.snippets,
+          type,
+          mode,
+          targetLang: targetLang || null,
+          title: S.transcriptData.title || ''
+        })
+      });
+      const { data, parsed } = await readJsonSafe(res);
+      if (!res.ok) {
+        if (res.status === 429) {
+          throw new Error((parsed && (data.message || data.error)) || 'Daily demo limit reached.');
+        }
+        throw new Error(failureMessage(res, data, parsed, 'ai'));
+      }
+      const meta = {
+        model: data.model || null,
+        elapsedMs: typeof data.elapsedMs === 'number' ? data.elapsedMs : (Date.now() - startAt),
+        tokens: typeof data.tokens === 'number' ? data.tokens : null,
+      };
+      if (type === 'reconstruct') {
+        S.reconstructedText = data.reconstructed;
+        S.lastReconstructionMeta = meta;
+        setActiveView('reconstruction');
+      } else {
+        S.summaryText = data.summary;
+        S.lastAiMeta = meta;
+        setActiveView('summary');
+      }
+      renderTranscript();
+      renderSummary();
+    }
+
     async function doTransform(type, mode, targetLang) {
       if (!S.transcriptData) return;
       const startAt = Date.now();
@@ -2228,57 +2390,16 @@
         : 'Generating summary…';
       aiProgressText.textContent = S.aiProgress;
 
+      // Streaming is opt-out via the same flag the server uses, so both sides
+      // can be rolled back together without a code change.
+      const useStreaming = window.YTTRANSCRIPT_STREAMING !== false;
+
       try {
-        // Brief §7: type is one of 'reconstruct' | 'summarize'. Never
-        // 'reconstruction' or 'summary' in the request payload — those names
-        // belong to UI views only.
-        const res = await fetch('/api/transform', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            snippets: S.transcriptData.snippets,
-            type,
-            mode,
-            targetLang: targetLang || null,
-            title: S.transcriptData.title || ''
-          })
-        });
-        const { data, parsed } = await readJsonSafe(res);
-        if (!res.ok) {
-          // Surface 429 daily-limit error with contact info
-          if (res.status === 429) {
-            throw new Error((parsed && (data.message || data.error)) || 'Daily demo limit reached.');
-          }
-          // Distinguish LLM provider errors from transcript fetch errors.
-          // Non-JSON bodies (Cloudflare 502 HTML, "error code: 502" text) have no
-          // message of their own — fall back to an explicit status-based message
-          // instead of leaking a raw JSON.parse / DOMException string.
-          throw new Error(failureMessage(res, data, parsed, 'ai'));
-        }
-        // Capture metadata for badge (brief §17). elapsedMs from server is
-        // authoritative (server measures around the chat call); client startAt
-        // is a fallback if the server omitted it.
-        const meta = {
-          model: data.model || null,
-          elapsedMs: typeof data.elapsedMs === 'number' ? data.elapsedMs : (Date.now() - startAt),
-          tokens: typeof data.tokens === 'number' ? data.tokens : null,
-        };
-        if (type === 'reconstruct') {
-          S.reconstructedText = data.reconstructed;
-          S.lastReconstructionMeta = meta;
-          // Keep any existing summary available in the AI Summary tab.
-          // The top-level view switcher is the source of truth for choosing
-          // between Transcript / AI Reconstruction / AI Summary.
-          setActiveView('reconstruction');
+        if (useStreaming) {
+          await doTransformStreaming(type, mode, targetLang, startAt);
         } else {
-          S.summaryText = data.summary;
-          S.lastAiMeta = meta;
-          // Keep any existing reconstruction available in the AI Reconstruction tab.
-          // New transcript fetch/reset is the only flow that clears both outputs.
-          setActiveView('summary');
+          await doTransformBuffered(type, mode, targetLang, startAt);
         }
-        renderTranscript();
-        renderSummary();
         setAiLoading(false);
       } catch (err) {
         setAiLoading(false);

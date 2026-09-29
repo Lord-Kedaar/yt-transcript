@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createDiagnosticLogger, classifyError, publicTransformError } from './diagnostics.js';
 import { createProviderStateMachine } from './provider-state-machine.js';
+import { fetchChatStream } from './sse-stream.js';
 
 // Diagnostic logger instance — used for all JSONL event emission.
 
@@ -38,6 +39,30 @@ const LLM_PROVIDER_FALLBACK = (process.env.LLM_PROVIDER_FALLBACK || 'omlx')
 // Health cache TTL (ms) — caches llmProvider.health() results to prevent
 // flakiness from cold-starting large models on each /api/lm-status or /api/transform call.
 const HEALTH_CACHE_TTL_MS = Number(process.env.HEALTH_CACHE_TTL_MS || 3000);
+
+// Transcript language policy: prefer English for the app's primary use case,
+// but fall back to the first available track when a video has no English
+// captions. The fallback is explicit and observable through the response lang.
+const TRANSCRIPT_LANG_PATTERN = /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i;
+
+function normalizeTranscriptLanguage(value) {
+  return String(value)
+    .split('-')
+    .map((part, index) => {
+      if (index === 0) return part.toLowerCase();
+      if (/^[a-z]{2}$/i.test(part)) return part.toUpperCase();
+      return part;
+    })
+    .join('-');
+}
+
+const TRANSCRIPT_DEFAULT_LANG_RAW = (process.env.YTTRANSCRIPT_TRANSCRIPT_LANG || 'en').trim();
+const TRANSCRIPT_DEFAULT_LANG =
+  TRANSCRIPT_DEFAULT_LANG_RAW === ''
+    ? null
+    : TRANSCRIPT_LANG_PATTERN.test(TRANSCRIPT_DEFAULT_LANG_RAW)
+      ? normalizeTranscriptLanguage(TRANSCRIPT_DEFAULT_LANG_RAW)
+      : 'en';
 
 // oMLX settings (used when LLM_PROVIDER=omlx)
 const OMLX_URL = process.env.OMLX_URL || process.env.LM_STUDIO_URL || 'http://localhost:8585';
@@ -219,7 +244,10 @@ function clientIp(req) {
   // Fallback: last entry in X-Forwarded-For (Cloudflare appends its IP as the last entry)
   const xff = req.headers['x-forwarded-for'];
   if (xff && typeof xff === 'string' && xff.trim()) {
-    const ips = xff.split(',').map(s => s.trim()).filter(Boolean);
+    const ips = xff
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean);
     if (ips.length > 0) {
       let ip = ips[ips.length - 1]; // last = closest to proxy = most trustworthy
       if (ip.startsWith('::ffff:')) ip = ip.slice(7);
@@ -624,6 +652,12 @@ function buildLlmProvider() {
     async chat(messages, opts) {
       return sm.chat(messages, opts);
     },
+    // Streaming variant. Falls back to the next provider ONLY while nothing has
+    // been emitted downstream yet — once the first delta reaches the client the
+    // response can no longer be swapped without splicing two different outputs.
+    async chatStream(messages, opts) {
+      return sm.chatStream(messages, opts);
+    },
     // Expose state-machine inspectors for /api/health and /api/lm-status.
     getState: sm.getState,
     getActiveProviderName: sm.getActiveProviderName,
@@ -670,6 +704,49 @@ function buildOmlxProvider() {
       throw lastError;
     },
 
+    /**
+     * Streaming variant of chat(). Mirrors the same model-candidate walk
+     * (memory-pressure fallback) but emits deltas as they arrive.
+     * `onDelta` receives each content fragment; `hasEmitted()` lets the caller
+     * know whether anything has already been sent downstream (once true, the
+     * request can no longer be transparently retried on another provider).
+     */
+    async chatStream(
+      messages,
+      { model = null, onDelta, hasEmitted, signal, idleTimeoutMs = 120000 } = {},
+    ) {
+      const candidateModels = model
+        ? [model]
+        : [OMLX_MODEL, ...OMLX_FALLBACK_MODELS.filter(m => m !== OMLX_MODEL)];
+      let lastError;
+      for (const candidate of candidateModels) {
+        try {
+          const result = await fetchChatStream(`${OMLX_URL}/v1/chat/completions`, {
+            headers: { ...(OMLX_API_KEY ? { Authorization: `Bearer ${OMLX_API_KEY}` } : {}) },
+            model: candidate,
+            messages,
+            onDelta,
+            idleTimeoutMs,
+            signal,
+          });
+          return { ...result, model: candidate };
+        } catch (err) {
+          lastError = err;
+          // Never switch models mid-stream: the client would receive spliced text.
+          if (
+            hasEmitted?.() ||
+            !isOmlxMemoryPressureError(err) ||
+            candidate === candidateModels[candidateModels.length - 1]
+          ) {
+            throw err;
+          }
+          console.warn(
+            `oMLX model ${candidate} OOM; trying next fallback: ${getErrorMessage(err)}`,
+          );
+        }
+      }
+      throw lastError;
+    },
     async health() {
       try {
         const data = await fetchJsonWithRetry(
@@ -723,6 +800,18 @@ function buildFreeLLMAPIProvider() {
       );
       const model = data?.model || FREELLMAPI_MODEL;
       return { content: data?.choices?.[0]?.message?.content ?? '', raw: data, model };
+    },
+
+    async chatStream(messages, { onDelta, signal, idleTimeoutMs = 120000 } = {}) {
+      const result = await fetchChatStream(`${FREELLMAPI_URL}/v1/chat/completions`, {
+        headers: { Authorization: `Bearer ${FREELLMAPI_API_KEY}` },
+        model: FREELLMAPI_MODEL,
+        messages,
+        onDelta,
+        idleTimeoutMs,
+        signal,
+      });
+      return { ...result, model: FREELLMAPI_MODEL };
     },
 
     async health() {
@@ -785,6 +874,21 @@ function buildMistralProvider() {
         raw: data,
         model: data?.model || MISTRAL_MODEL,
       };
+    },
+
+    async chatStream(messages, { onDelta, signal, idleTimeoutMs = 120000 } = {}) {
+      const result = await fetchChatStream(`${MISTRAL_URL}/chat/completions`, {
+        headers: {
+          Accept: 'application/json',
+          ...(MISTRAL_API_KEY ? { Authorization: `Bearer ${MISTRAL_API_KEY}` } : {}),
+        },
+        model: MISTRAL_MODEL,
+        messages,
+        onDelta,
+        idleTimeoutMs,
+        signal,
+      });
+      return { ...result, model: MISTRAL_MODEL };
     },
     async health() {
       try {
@@ -851,6 +955,20 @@ function buildGroqProvider() {
       // empty fall back to reasoning_content so the caller still sees something.
       const content = msg.content || msg.reasoning_content || '';
       return { content, raw: data, model: data?.model || GROQ_MODEL };
+    },
+    async chatStream(messages, { onDelta, signal, idleTimeoutMs = 120000 } = {}) {
+      const result = await fetchChatStream(`${GROQ_URL}/chat/completions`, {
+        headers: {
+          Accept: 'application/json',
+          ...(GROQ_API_KEY ? { Authorization: `Bearer ${GROQ_API_KEY}` } : {}),
+        },
+        model: GROQ_MODEL,
+        messages,
+        onDelta,
+        idleTimeoutMs,
+        signal,
+      });
+      return { ...result, model: GROQ_MODEL };
     },
     async health() {
       try {
@@ -942,10 +1060,13 @@ function normalizeTranscriptSegments(result) {
         .trim();
       const start = Number(item?.start ?? item?.offset ?? item?.begin ?? item?.time ?? 0);
       const duration = Number(item?.duration ?? item?.length ?? 0);
+      const rawLang = String(item?.lang || '').trim();
+      const lang = rawLang ? normalizeTranscriptLanguage(rawLang) : null;
       return {
         text,
         start: Number.isFinite(start) ? Math.max(0, Math.round(start)) : 0,
         duration: Number.isFinite(duration) ? Math.max(0, Math.round(duration)) : 0,
+        ...(lang ? { lang } : {}),
       };
     })
     .filter(item => item.text.length > 0)
@@ -1064,6 +1185,34 @@ function isMissingTranscriptError(message) {
   return TRANSCRIPT_MISSING_PATTERNS.some(pattern => lower.includes(pattern));
 }
 
+function requestedTranscriptLanguage(req) {
+  const raw = typeof req.query.lang === 'string' ? req.query.lang.trim() : '';
+  if (raw.toLowerCase() === 'auto') return null;
+  const lang = raw || TRANSCRIPT_DEFAULT_LANG;
+  if (lang && !TRANSCRIPT_LANG_PATTERN.test(lang)) {
+    const error = new Error('Invalid transcript language. Use a BCP 47 code such as en or de-DE.');
+    error.statusCode = 400;
+    throw error;
+  }
+  return lang ? normalizeTranscriptLanguage(lang) : null;
+}
+
+async function fetchTranscriptWithLanguageFallback(videoId, lang) {
+  if (!lang) return fetchTranscript(videoId, { videoDetails: true });
+
+  try {
+    return await fetchTranscript(videoId, { lang, videoDetails: true });
+  } catch (error) {
+    // youtube-transcript-plus uses this error when the requested language is
+    // absent. Only this case may fall back; network/video errors must surface.
+    if (error?.name !== 'YoutubeTranscriptNotAvailableLanguageError') throw error;
+    console.warn(
+      `[transcript] language '${lang}' unavailable for ${videoId}; using first available track`,
+    );
+    return fetchTranscript(videoId, { videoDetails: true });
+  }
+}
+
 /** Wraps llmProvider.health() — kept for backwards compat with existing route handlers. */
 async function checkOmlx() {
   return llmProvider.health();
@@ -1180,9 +1329,11 @@ function stripOutputWrappers(text) {
 function buildTranscriptResponse(videoId, result) {
   const snippets = normalizeTranscriptSegments(result);
   const title = result?.videoDetails?.title ? he.decode(String(result.videoDetails.title)) : null;
+  const lang = snippets.find(snippet => snippet.lang)?.lang || null;
   return {
     videoId,
     title: title || `Video ${videoId}`,
+    lang,
     transcriptText: snippets.map(s => s.text).join(' '),
     snippets,
     videoDetails: result?.videoDetails || null,
@@ -1337,14 +1488,15 @@ app.get('/api/transcript', async (req, res) => {
   }
 
   try {
-    const cacheKey = `transcript:${videoId}`;
+    const lang = requestedTranscriptLanguage(req);
+    const cacheKey = `transcript:${videoId}:${lang || 'auto'}`;
     const cached = getCached(cacheKey);
     if (cached) return res.json(cached);
 
     const result = await withRetry(
       () =>
         withTimeout(
-          () => fetchTranscript(videoId, { videoDetails: true }),
+          () => fetchTranscriptWithLanguageFallback(videoId, lang),
           90000,
           `Transcript fetch ${videoId}`,
         ),
@@ -1368,6 +1520,9 @@ app.get('/api/transcript', async (req, res) => {
     setCache(cacheKey, response);
     res.json(response);
   } catch (err) {
+    if (err?.statusCode === 400) {
+      return res.status(400).json({ error: err.message });
+    }
     const message = getErrorMessage(err);
     const lower = message.toLowerCase();
     if (isMissingTranscriptError(lower)) {
@@ -1395,12 +1550,44 @@ function rawTextGuard(req, _res, next) {
   next();
 }
 
+/**
+ * Build the exact message array for a transform request.
+ * Shared by the buffered endpoint and the streaming endpoint so both paths
+ * provably send identical prompts — a divergence here would make the two
+ * endpoints return different text for the same input.
+ */
+function buildTransformMessages({ type, mode, snippets, targetLang }) {
+  const promptDef = TRANSFORM_PROMPTS[type];
+  const rawText = snippets.map(s => String(s.text || '')).join(' ');
+  const userPrefix = promptDef.userPrefix;
+  const userSuffix =
+    type === 'reconstruct'
+      ? 'Use paragraphs. Keep every meaning intact.'
+      : 'STRUCTURE: First write exactly one introductory paragraph (3-5 sentences) about the speaker/author/channel and the topic of the video. Then write the rest as thematic sections. Each section must use a bold header like **Theme Name:** followed by a concise paragraph of 2-4 sentences. Use blank lines between sections. Do NOT use bullet points. Do NOT return one continuous block of text.';
+
+  const normalized = String(targetLang || 'pl').toLowerCase();
+  const allowedLangs = ['pl', 'de', 'en'];
+  const translateTo = mode === 'translate' && allowedLangs.includes(normalized) ? normalized : null;
+
+  const systemPrompt =
+    type === 'reconstruct'
+      ? buildReconstructSystemPrompt(translateTo)
+      : buildSummarizeSystemPrompt(translateTo);
+
+  return {
+    messages: [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `${userPrefix}\n\n${rawText}\n\n${userSuffix}` },
+    ],
+    rawText,
+  };
+}
+
 app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, async (req, res) => {
   noCache(res);
   const { snippets, type, mode = 'original' } = req.body || {};
   const requestId = req.get('X-Request-ID') || crypto.randomUUID();
 
-  // Create operation context for full pipeline tracing.
   const op = diagnostics.createOperationContext(requestId);
   res.setHeader('X-Request-ID', requestId);
 
@@ -1509,7 +1696,6 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
       { role: 'system', content: systemPrompt },
       { role: 'user', content: userPrompt },
     ];
-
     op.tick('chat_start');
     op.chat('start', {
       provider: activeProvider,
@@ -1605,6 +1791,268 @@ app.post('/api/transform', rawTextGuard, transformLimiter, aiDailyLimitGuard, as
     res.status(502).json({ error: publicTransformError({ type, fallbackAttempted }), requestId });
   }
 });
+
+// ─── Streaming transform (SSE) ────────────────────────────────────
+// Same contract as /api/transform, but deltas are forwarded as they arrive.
+//
+// Why: a ~94 kB transcript costs oMLX ~70 s of prefill before the first visible
+// token. Buffered, the client waits for the whole answer (~110 s) and Cloudflare
+// closes the edge at ~100 s → 524. Here the headers plus a keep-alive comment go
+// out immediately, so the connection is established and stays alive while the
+// model works; text then streams in as it is produced.
+//
+// Error model: an HTTP status is only sendable BEFORE the stream opens. Once
+// headers are flushed the failure is delivered as an SSE `error` event and the
+// stream is closed — the client reports it in the UI.
+app.post(
+  '/api/transform/stream',
+  rawTextGuard,
+  transformLimiter,
+  aiDailyLimitGuard,
+  async (req, res) => {
+    noCache(res);
+    const { snippets, type, mode = 'original' } = req.body || {};
+    const requestId = req.get('X-Request-ID') || crypto.randomUUID();
+    const op = diagnostics.createOperationContext(requestId);
+    res.setHeader('X-Request-ID', requestId);
+    op.bindResponseClose(res);
+
+    // Validation failures happen before the stream exists, so they keep using
+    // ordinary HTTP status codes — identical to the buffered endpoint.
+    if (!Array.isArray(snippets) || snippets.length === 0) {
+      return res.status(400).json({ error: 'No snippets provided.' });
+    }
+    if (!TRANSFORM_PROMPTS[type]) {
+      return res.status(400).json({ error: 'Invalid type. Use reconstruct or summarize.' });
+    }
+
+    const preflightStartedAt = Date.now();
+    op.tick('preflight');
+    const lmStatus = await checkOmlx();
+    const activeProvider = lmStatus.activeProvider || llmProvider.name;
+    const fallbackConfigured = Array.isArray(lmStatus.chain) && lmStatus.chain.length > 1;
+    const fallbackAttempted =
+      fallbackConfigured &&
+      (!lmStatus.ok ||
+        String(activeProvider).toLowerCase() !== String(llmProvider.name).toLowerCase());
+    op.transformPhase('preflight', {
+      streaming: true,
+      primary: llmProvider.name,
+      selected: activeProvider,
+      endpoint: providerEndpoint(activeProvider),
+      ok: lmStatus.ok,
+      durationMs: Date.now() - preflightStartedAt,
+      fallbackConfigured,
+      fallbackAttempted,
+    });
+    op.selectProvider(activeProvider, fallbackAttempted ? 'selected-fallback' : 'primary-retained');
+
+    if (!lmStatus.ok) {
+      op.transformPhase('failed', {
+        status: 503,
+        streaming: true,
+        technicalCause: lmStatus.error || 'no_healthy_provider',
+      });
+      op.finish({ sent: true });
+      return res
+        .status(503)
+        .json({ error: publicTransformError({ type, fallbackAttempted }), requestId });
+    }
+
+    const { messages, rawText } = buildTransformMessages({
+      type,
+      mode,
+      snippets,
+      targetLang: req.body.targetLang,
+    });
+
+    const responseKey = type === 'reconstruct' ? 'reconstructed' : 'summary';
+    const cacheKey = `${type}:${mode}:${req.body.targetLang || 'pl'}:${hashKey(rawText)}`;
+    const startAt = Date.now();
+
+    // From here on the response is an event stream.
+    res.status(200);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    res.flushHeaders();
+    if (typeof res.socket?.setNoDelay === 'function') res.socket.setNoDelay(true);
+
+    const sse = (event, data) => {
+      if (res.writableEnded) return;
+      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
+    // Keep-alive comments hold the connection open through Cloudflare and any
+    // intermediate proxy while a long prefill produces no content yet.
+    const keepAlive = setInterval(() => {
+      if (res.writableEnded) return;
+      res.write(': keep-alive\n\n');
+    }, 10000);
+
+    // Abort upstream work if the browser goes away (tab closed, user navigated).
+    const clientAbort = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) {
+        op.disconnect('client_abort');
+        clientAbort.abort();
+      }
+    });
+
+    let emitted = false;
+    try {
+      op.tick('chat_start');
+      op.chat('start', {
+        provider: activeProvider,
+        endpoint: providerEndpoint(activeProvider),
+        modelType: activeProvider,
+        streaming: true,
+      });
+
+      const result = await llmProvider.chatStream(messages, {
+        onDelta: piece => {
+          if (!emitted) {
+            emitted = true;
+            op.tick('chat_first_delta');
+          }
+          sse('delta', { text: piece });
+        },
+        requestId,
+        signal: clientAbort.signal,
+        idleTimeoutMs: 120000,
+      });
+
+      const chatProvider = result.providerName || activeProvider;
+      const elapsedMs = Date.now() - startAt;
+      // Mirror the buffered endpoint: total_tokens (prompt + completion) when the
+      // upstream reports usage. oMLX additionally reports generation_tokens_per_second
+      // and time_to_first_token, which we pass through for the badge.
+      const usage = result.usage || null;
+      const tokens = usage?.total_tokens ?? null;
+      const output = String(result.content || '').trim();
+
+      if (!output) {
+        op.chat('failed', {
+          provider: chatProvider,
+          endpoint: providerEndpoint(chatProvider),
+          durationMs: elapsedMs,
+          errorClassification: 'empty_response',
+          streaming: true,
+        });
+        sse('error', {
+          status: 502,
+          error: publicTransformError({ type, fallbackAttempted }),
+          requestId,
+        });
+        op.transformPhase('failed', {
+          status: 502,
+          errorClassification: 'empty_response',
+          streaming: true,
+        });
+        op.finish({ sent: true });
+        return res.end();
+      }
+
+      // Same post-processing pipeline as the buffered path.
+      let processed = output;
+      try {
+        const parsed = JSON.parse(processed);
+        if (parsed && typeof parsed === 'object' && typeof parsed.output === 'string') {
+          processed = parsed.output.trim();
+        }
+      } catch {
+        // ignore accidental plain-text JSON-ish output
+      }
+      processed = stripOutputWrappers(processed);
+      processed = stripReasoningArtifacts(processed);
+
+      setCache(cacheKey, {
+        [responseKey]: processed,
+        snippetCount: snippets.length,
+        model: result.model,
+        elapsedMs,
+        tokens,
+      });
+
+      sse('done', {
+        [responseKey]: processed,
+        snippetCount: snippets.length,
+        model: result.model,
+        provider: chatProvider,
+        elapsedMs,
+        tokens,
+        completionTokens: usage?.completion_tokens ?? null,
+        finishReason: result.finishReason ?? null,
+        requestId,
+      });
+      res.end();
+
+      op.chat('succeeded', {
+        provider: chatProvider,
+        endpoint: providerEndpoint(chatProvider),
+        durationMs: elapsedMs,
+        streaming: true,
+      });
+      op.tick('response_complete');
+      op.transformPhase('completed', {
+        type,
+        provider: chatProvider,
+        model: result.model,
+        durationMs: elapsedMs,
+        outputLength: processed.length,
+        streaming: true,
+      });
+      op.finish({ sent: true });
+    } catch (err) {
+      const elapsedMs = Date.now() - startAt;
+      const providerName = err.providerName || activeProvider;
+      // A client-side abort is not a server error — the browser already left.
+      if (clientAbort.signal.aborted) {
+        op.chat('failed', {
+          provider: providerName,
+          endpoint: providerEndpoint(providerName),
+          durationMs: elapsedMs,
+          errorClassification: 'abort',
+          technicalCause: getErrorMessage(err),
+          streaming: true,
+        });
+        op.finish({ sent: false });
+        if (!res.writableEnded) res.end();
+        return;
+      }
+      console.error(`Transform/${type} stream error:`, err);
+      op.chat('failed', {
+        provider: providerName,
+        endpoint: providerEndpoint(providerName),
+        durationMs: elapsedMs,
+        errorClassification: classifyError(err),
+        technicalCause: getErrorMessage(err),
+        fallbackAttempted,
+        streaming: true,
+      });
+      op.transformPhase('failed', {
+        status: 502,
+        errorClassification: classifyError(err),
+        technicalCause: getErrorMessage(err),
+        streaming: true,
+        afterFirstDelta: emitted,
+      });
+      // If a partial answer already reached the client, surface the failure as an
+      // error event rather than pretending the truncated text is complete.
+      sse('error', {
+        status: 502,
+        error: publicTransformError({ type, fallbackAttempted }),
+        afterFirstDelta: emitted,
+        requestId,
+      });
+      op.finish({ sent: true });
+      if (!res.writableEnded) res.end();
+    } finally {
+      clearInterval(keepAlive);
+    }
+  },
+);
 
 app.get('/', async (req, res) => {
   noCache(res);

@@ -532,6 +532,80 @@ export function createProviderStateMachine({
     }
   }
 
+  /**
+   * Streaming counterpart of chat().
+   *
+   * Fallback semantics differ from the non-streaming path by necessity: once a
+   * delta has been handed to the client, the output can no longer be replaced,
+   * so we may only fail over while `hasEmitted()` is still false. A failure
+   * after the first byte is terminal (the caller closes the SSE stream and the
+   * client shows the error) — this is strictly more honest than emitting half
+   * of one model's answer followed by another model's.
+   *
+   * @param {Array} messages
+   * @param {Object} opts - forwarded to provider.chatStream, plus onDelta
+   * @returns {Promise<{content: string, usage?: Object, model?: string, providerName: string, emitted: boolean}>}
+   */
+  async function chatStream(messages, opts = {}) {
+    const { onDelta, requestId, ...providerOpts } = opts;
+    const provider = await resolve(requestId);
+    let emitted = false;
+    const wrappedDelta = piece => {
+      emitted = true;
+      if (typeof onDelta === 'function') onDelta(piece);
+    };
+
+    try {
+      const result = await provider.chatStream(messages, {
+        ...providerOpts,
+        onDelta: wrappedDelta,
+        hasEmitted: () => emitted,
+      });
+      recordChatSuccess();
+      return { ...result, providerName: provider.name, emitted };
+    } catch (err) {
+      err.providerName = provider.name;
+      recordChatFailure(err, requestId);
+
+      const canFailOver =
+        !emitted &&
+        provider === chain[0] &&
+        state === STATES.FALLBACK_OPEN &&
+        chain.length > 1 &&
+        !isNonForwardable(classifyProviderError(err));
+
+      if (canFailOver) {
+        emit('provider.fallback.attempted', {
+          requestId: requestId || null,
+          reason: 'chat_stream_failure_retry',
+          provider: chain[1].name,
+        });
+        try {
+          const fbResult = await chain[1].chatStream(messages, {
+            ...providerOpts,
+            onDelta: wrappedDelta,
+            hasEmitted: () => emitted,
+          });
+          emit('provider.fallback.succeeded', {
+            requestId: requestId || null,
+            provider: chain[1].name,
+          });
+          return { ...fbResult, providerName: chain[1].name, emitted };
+        } catch (fbErr) {
+          fbErr.providerName = chain[1].name;
+          emit('provider.fallback.failed', {
+            requestId: requestId || null,
+            provider: chain[1].name,
+            error: fbErr?.message,
+          });
+          throw fbErr;
+        }
+      }
+
+      throw err;
+    }
+  }
+
   // ── Inspectors (for tests and /api/health) ────────────────────────
 
   function getState() {
@@ -566,6 +640,7 @@ export function createProviderStateMachine({
   return {
     resolve,
     chat,
+    chatStream,
     health,
     recordChatFailure,
     recordChatSuccess,
