@@ -1,3 +1,30 @@
+## 2026-09-21 — ytTranscript — AI progress nad transkrypcją
+
+- **Co:** Przeniesiono `#aiProgress` nad przewijalny `#transcriptBody`, zachowując istniejący spinner, animację, tekst statusu i `aria-live="polite"`; zmieniono separator z górnego na dolny.
+- **Plik:** `index.html` (aktywny root frontend); publiczny runtime `/srv/storage/AI_Projects/yt-transcript/index.html`
+- **Build:** `npm run build` PASS (287 modułów; pre-existing warning o dużym chunku); client tests 2 suite PASS; `node --check server.js` PASS; `git diff --check` PASS.
+- **Preview:** publiczny `https://yttranscript.radoslaw-pleskot.com/` HTTP 200; `/api/health` HTTP 200; runtime PID 835028 na `*:4002`; publiczny HTML potwierdza kolejność `#aiProgress` → `#transcriptBody`.
+- **Raport:** brak osobnego raportu.
+- **Rollback:** lokalny `.backups/ai-progress-top-20260921-044924/index.html.pre`; zdalny `/srv/storage/AI_Projects/_archive/yt-transcript/20260921T025142Z-ai-progress-top/index.html.pre`; po przywróceniu zrestartować `node server.js`.
+
+## 2026-09-21 — ytTranscript — deploy selekcji języka na Lenovo public runtime
+
+- **Co:** Wdrożono wyłącznie `server.js` do faktycznego procesu publicznego `/srv/storage/AI_Projects/yt-transcript`, po backupie zdalnym; zrestartowano ręczny `node server.js` na porcie 4002. Systemd `yt-transcript.service` pozostaje inactive i nie był modyfikowany.
+- **Plik:** `/srv/storage/AI_Projects/yt-transcript/server.js`; backup `/srv/storage/AI_Projects/_archive/yt-transcript/20260921T023120Z-transcript-language/{server.js.pre,.env.pre}`
+- **Build:** zdalny hash po deployu `5bd445196eee525e55824e2c15a0d305731073e5ab42ff3d9935f330ddcc6bf4`; zgodny z lokalnym.
+- **Preview:** publiczny `https://yttranscript.radoslaw-pleskot.com`: `/api/health` HTTP 200, nowy PID 826571 na `*:4002`; domyślny `/api/transcript` HTTP 200 `lang=en`; `lang=de-DE` HTTP 200 `lang=de-DE` z niemieckim tekstem.
+- **Raport:** brak osobnego raportu.
+- **Rollback:** zatrzymać PID 826571, przywrócić backup `server.js.pre` do runtime root i uruchomić `node server.js`; backup zdalny zachowany poza runtime root.
+
+## 2026-09-21 — ytTranscript — preferowany język transcriptu + fallback tracka
+
+- **Co:** Backend przestał wybierać bezwarunkowo pierwszy track YouTube. Domyślnie żąda `en`, używa pierwszego dostępnego tracka wyłącznie gdy angielski nie istnieje, zachowuje kody BCP 47 (`de-DE`, `pt-BR`), zwraca faktyczny `lang`, rozdziela cache po języku i odrzuca niepoprawne parametry `lang` HTTP 400.
+- **Plik:** `server.js`, `.env.example`, `STATE_LOG.md`
+- **Build:** `node --check server.js` PASS; `git diff --check` PASS; client tests 2/2 PASS; `npm run build` PASS (287 modułów, ostrzeżenie o dużym chunku pre-existing).
+- **Preview:** lokalny `http://127.0.0.1:4551` PID 99197; `/api/health` HTTP 200; domyślny `/api/transcript` HTTP 200 `lang=en`; `lang=de-DE` HTTP 200 `lang=de-DE` z niemieckim tekstem.
+- **Raport:** brak osobnego raportu.
+- **Rollback:** tag `backup-pre-transcript-language-20260921-042353` / branch `backup/pre-transcript-language-20260921-042353-024cc00`; przywrócenie `server.js` i `.env.example` do HEAD 024cc00.
+
 ## 2026-07-20 — ytTranscript — fix: przywrócono bezpieczny fallback oMLX\n\n- **Co:** Przywrócono domyślny fallback LLM_PROVIDER_FALLBACK na 'omlx' w server.js oraz ustawiono jawnie LLM_PROVIDER_FALLBACK=omlx w .env i .env.example, aby spełnić polecenie użytkownika o natychmiastowym przywróceniu kontraktu providerów: primary Mistral, automatyczny fallback na lokalne oMLX.\n- **Plik:** server.js (zmiana domyślnego fallbacku), .env (ustawienie zmiennej), .env.example (aktualizacja przykładu), STATE_LOG.md (ten wpis)\n- **Build:** testy regresyjne scripts/test-fallback-regression.mjs przeszły (6/6)\n- **Preview:** lokalny serwer uruchomiony na porcie 4001, endpoint /api/health zwraca provider=Mistral (ponieważ Mistral jest zdrowy), konfiguracja fallbacku widoczna w kodzie\n- **Raport:** brak osobnego raportu; zmiany opisane w tym wpisie STATE_LOG
 ## 2026-07-20 — ytTranscript — fix: bezpieczny domyślny fallback (usunięto 'omlx')
 
@@ -8,6 +35,15 @@
 - **Raport:** `docs/METRICUS_FIX_MISTRAL_FALLBACK_2026-07-20.md`
 
 # STATE_LOG — ytTranscript
+
+## 2026-09-30 — feat(streaming): SSE transform endpoint + provider chatStream (commit 81560fd)
+
+- **Co:** `POST /api/transform/stream` — delty AI lecą do klienta na bieżąco. Powód: ~94 kB transkryptu = ~70 s prefillu oMLX przed pierwszym tokenem; buforowany klient czekał ~110 s, Cloudflare zamykał krawędź po ~100 s → 524. Nagłówki + `: keep-alive` co 10 s natychmiast po `flushHeaders()`.
+- **Plik:** `sse-stream.js` (NOWY), `provider-state-machine.js` (`chatStream()`), `server.js` (`/api/transform/stream`, `buildTransformMessages()`), `index.html` (`readTransformStream`, `doTransformStreaming`, `scheduleStreamPreview`), `test/streaming.test.js` (NOWY)
+- **Build:** `node --check` OK; ESLint czysto; **105/105 testów pass**
+- **Preview:** E2E CDP 14/14 PASS; oMLX 900 snip = 78,3 s z 7 keep-alive; produkcja Cloudflare 200, pierwsza delta 4,8 s, total 36,7 s
+- **Rollback:** `.backups/streaming-20260929-235214/`; flaga `window.YTTRANSCRIPT_STREAMING = false`; stary endpoint nietknięty
+- **Uwaga:** `test/daily-limit.test.js` wymaga serwera na :4005 i failuje 4/5 niezależnie od tej zmiany (pre-existing)
 
 ## 2026-09-14 — fix: „The string did not match the expected pattern." (WebKit DOMException + martwy fallback oMLX)
 
