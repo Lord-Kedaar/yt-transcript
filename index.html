@@ -2011,6 +2011,11 @@
 
       if (S.reconstructedText) {
         transcriptReconstructed.innerHTML = md(S.reconstructedText);
+      } else {
+        // Clear explicitly: leaving the previous HTML here would show stale,
+        // possibly half-generated text after a failed stream rolled the state
+        // back to empty.
+        transcriptReconstructed.innerHTML = '';
       }
       // copyTranscriptBtn / copyReconstructionBtn visibility is now managed by setActiveView
       renderReconstructionMeta();
@@ -2180,6 +2185,11 @@
     /* RENDER: SUMMARY */
     function renderSummary() {
       if (!S.summaryText) {
+        // Clear explicitly — see renderTranscript(). A rollback to "no summary"
+        // must not leave the previous summary's HTML on screen.
+        summaryBody.innerHTML = '';
+        summaryFooter.style.display = 'none';
+        summaryMetaBadge.style.display = 'none';
         // Hide summary without touching viewSwitcher — setActiveView decides visibility.
         return;
       }
@@ -2261,12 +2271,17 @@
        answer and could be exported or read aloud. */
     function revertStreamPreview(type, previousText) {
       cancelStreamPreview();
+      const restored = previousText || '';
       if (type === 'reconstruct') {
-        S.reconstructedText = previousText;
+        S.reconstructedText = restored;
         renderTranscript();
+        // If the rollback emptied this view, fall back to the transcript so the
+        // user is not left on a blank results panel.
+        if (!restored && S.activeView === 'reconstruction') setActiveView('transcript');
       } else {
-        S.summaryText = previousText;
+        S.summaryText = restored;
         renderSummary();
+        if (!restored && S.activeView === 'summary') setActiveView('transcript');
       }
     }
 
@@ -2280,52 +2295,64 @@
       // The answer that was on screen before this request — restored on failure.
       const previousText = type === 'reconstruct' ? S.reconstructedText : S.summaryText;
 
-      for (;;) {
-        const { done: finished, value } = await reader.read();
-        if (finished) break;
-        buffer += decoder.decode(value, { stream: true });
-        let sep;
-        while ((sep = buffer.indexOf('\n\n')) !== -1) {
-          const frame = buffer.slice(0, sep);
-          buffer = buffer.slice(sep + 2);
-          let name = null, payload = null;
-          for (const line of frame.split('\n')) {
-            if (line.startsWith('event: ')) name = line.slice(7).trim();
-            else if (line.startsWith('data: ')) payload = line.slice(6);
-            // lines starting with ':' are keep-alive comments — ignore
-          }
-          if (!name || payload === null) continue;
-          let data;
-          try { data = JSON.parse(payload); } catch { continue; }
-          if (name === 'delta' && typeof data.text === 'string') {
-            full += data.text;
-            // Show partial text live, coalesced to one paint per frame.
-            scheduleStreamPreview(type, full);
-          } else if (name === 'done') {
-            done = data;
-          } else if (name === 'error') {
-            const err = new Error(data.error || 'AI service error.');
-            // The backend tells us whether partial text already reached the
-            // screen; either way the stream did not complete, so the panel is
-            // rolled back rather than left showing a half-finished answer.
-            err.afterFirstDelta = data.afterFirstDelta === true;
-            streamError = err;
+      // A failed stream must always leave the panel showing the last COMPLETED
+      // answer, never a half-generated one. Every exit path is covered:
+      //   - reader.read() rejecting (transport torn down mid-body)
+      //   - an `error` event from the server
+      //   - EOF with no terminal `done` event
+      // Cleanup lives in finally so an unexpected throw cannot skip it. `onDone`
+      // has already replaced the state on success, so it is a no-op there.
+      let completed = false;
+      try {
+        for (;;) {
+          const { done: finished, value } = await reader.read();
+          if (finished) break;
+          buffer += decoder.decode(value, { stream: true });
+          let sep;
+          while ((sep = buffer.indexOf('\n\n')) !== -1) {
+            const frame = buffer.slice(0, sep);
+            buffer = buffer.slice(sep + 2);
+            let name = null, payload = null;
+            for (const line of frame.split('\n')) {
+              if (line.startsWith('event: ')) name = line.slice(7).trim();
+              else if (line.startsWith('data: ')) payload = line.slice(6);
+              // lines starting with ':' are keep-alive comments — ignore
+            }
+            if (!name || payload === null) continue;
+            let data;
+            try { data = JSON.parse(payload); } catch { continue; }
+            if (name === 'delta' && typeof data.text === 'string') {
+              full += data.text;
+              // Show partial text live, coalesced to one paint per frame.
+              scheduleStreamPreview(type, full);
+            } else if (name === 'done') {
+              done = data;
+            } else if (name === 'error') {
+              const err = new Error(data.error || 'AI service error.');
+              // The backend tells us whether partial text already reached the
+              // screen; either way the stream did not complete, so the panel is
+              // rolled back rather than left showing a half-finished answer.
+              err.afterFirstDelta = data.afterFirstDelta === true;
+              streamError = err;
+            }
           }
         }
+
+        if (streamError) throw streamError;
+        if (!done) {
+          // Connection dropped without a terminal event — same rollback.
+          throw new Error('The AI stream ended unexpectedly. Please try again.');
+        }
+        // Drop any queued preview so it cannot repaint stale text after the
+        // finalized answer is rendered.
+        cancelStreamPreview();
+        onDone(done, full);
+        completed = true;
+      } finally {
+        // Whatever happened above — including reader.read() rejecting — the
+        // preview must not survive an unfinished response.
+        if (!completed) revertStreamPreview(type, previousText);
       }
-      if (streamError) {
-        revertStreamPreview(type, previousText);
-        throw streamError;
-      }
-      if (!done) {
-        // Connection dropped without a terminal event — same rollback.
-        revertStreamPreview(type, previousText);
-        throw new Error('The AI stream ended unexpectedly. Please try again.');
-      }
-      // Drop any queued preview so it cannot repaint stale text after the
-      // finalized answer is rendered.
-      cancelStreamPreview();
-      onDone(done, full);
     }
 
     async function doTransformStreaming(type, mode, targetLang, startAt) {

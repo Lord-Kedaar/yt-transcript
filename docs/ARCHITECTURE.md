@@ -8,14 +8,16 @@
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
-│                      Browser (SPA, :4000)                      │
-│  React 18 + Vite                                               │
-│  - UrlInput                                                    │
-│  - TranscriptPanel (raw segments)                              │
-│  - ReconstructedPanel (LLM-cleaned paragraphs)                 │
-│  - SummaryPanel (LLM bullet summary)                           │
-│  - ExportButtons (TXT/SRT)                                     │
-│  - useTTS hook (Read Aloud via /api/tts)                       │
+│               Browser (single-page UI, :4000)                  │
+│  Vanilla JS — single-file `index.html` served from the repo    │
+│  root (no bundler). The `client/` React+Vite scaffold is kept  │
+│  in the tree but is NOT the active surface.                    │
+│  - URL input + fetch                                           │
+│  - Raw transcript panel (segments)                             │
+│  - AI reconstruction panel (streamed live)                     │
+│  - AI summary panel (streamed live)                            │
+│  - Export (TXT/SRT/MD/PDF)                                     │
+│  - Read Aloud via /api/tts                                     │
 └────────────────────────────────────────────────────────────────┘
                               │ HTTP
                               ▼
@@ -51,12 +53,15 @@
 
 ## Key design decisions
 
-### Single-port (no Vite dev in production)
+### Single-port (no bundler, no dev server in production)
 
-The app serves the React SPA from the same Express process on port 4000.
-Vite dev is intentionally disabled (`scripts/dev-disabled.mjs`).
+The active UI is a single `index.html` at the repo root, served by the same
+Express process on port 4000 and edited in place — there is no build step for
+it. The `client/` React + Vite scaffold is preserved in the tree for reference
+but is not served; `vite` dev is deliberately disabled
+(`scripts/dev-disabled.mjs`).
 Rationale: the production-readiness story is simpler when there is exactly
-one port to expose via Cloudflare Tunnel.
+one port to expose via Cloudflare Tunnel and nothing to rebuild on deploy.
 
 ### oMLX as the default LLM provider
 
@@ -71,8 +76,11 @@ backwards compatibility.
 - `/api/transcript` retries transient network failures (3 attempts).
 - `/api/transform` retries transient oMLX failures (2 attempts) and
   cascades to a smaller fallback model on memory pressure.
+- `/api/transform/stream` (SSE) verifies completion: a stream that ends without
+  `[DONE]`/`finish_reason` is a failure, never a short answer. A client
+  disconnect aborts the upstream read and writes nothing to cache.
 - `express.json({ limit: '16mb' })` — large transcripts are common.
-- If `client/dist/index.html` is missing, the server returns a recovery
+- If the served `index.html` is missing, the server returns a recovery
   page instead of crashing.
 - `process.on('unhandledRejection' | 'uncaughtException')` logs and
   shuts down so the supervisor can restart the process cleanly.
@@ -88,6 +96,8 @@ breaking the rest of the UI.
 ```
 yt-transcript/
 ├── server.js                  # Express + all API endpoints
+├── index.html                 # ACTIVE UI (vanilla JS, single file, no build)
+├── sse-stream.js              # OpenAI-compatible SSE parser (streaming core)
 ├── package.json               # root deps + scripts
 ├── .env.example               # env template (committed)
 ├── .gitignore
@@ -96,10 +106,11 @@ yt-transcript/
 ├── manage.sh                  # start/stop/status (uses /tmp/yt-transcript)
 ├── start.sh                   # alias for npm start
 ├── start-frontend.sh          # placeholder; dev mode is disabled
+├── test/                      # node --test suites (streaming, providers, diagnostics)
 ├── scripts/
 │   ├── build.js               # writes client/dist/build-info.json
 │   └── dev-disabled.mjs       # explicit error when dev is invoked
-├── client/                    # React + Vite SPA
+├── client/                    # React + Vite scaffold — preserved, NOT served
 │   ├── package.json
 │   ├── vite.config.js
 │   ├── index.html
