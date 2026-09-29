@@ -64,10 +64,47 @@ For production deploy on Lenovo — see **[DEPLOYMENT_LENOVO_LINUX.md](DEPLOYMEN
 | GET    | `/api/lm-status` | Slim health probe (current active provider only) |
 | GET    | `/api/build-version` | Release metadata |
 | GET    | `/api/transcript?url=<youtube-url>` | Fetch transcript for a URL |
-| POST   | `/api/transform` | `{snippets, type, mode}` → `{reconstructed\|summary, ...}` |
+| POST   | `/api/transform` | `{snippets, type, mode}` → `{reconstructed\|summary, ...}` (waits for the full answer) |
+| POST   | `/api/transform/stream` | Same body/contract, delivered as Server-Sent Events (see below) |
 | POST   | `/api/tts` | `{type, language, text}` → `{audioUrl, language}` (503 if Piper missing) |
 | GET    | `/api/audio/:id` | Serve generated WAV |
 | GET    | `/` | Single-file frontend (`index.html`) or recovery page |
+
+### `POST /api/transform/stream` (Server-Sent Events)
+
+Same request body and same final payload as `/api/transform`, but the answer is
+delivered incrementally. Why it exists: a large transcript (~94 kB ≈ 31.7k
+prompt tokens) costs a local oMLX model ~70 s of prefill *before the first
+token*. Buffered, the browser waits for the whole answer (~110 s) and the
+Cloudflare edge closes at ~100 s → HTTP 524. Streaming keeps the connection
+alive from the first byte, so the user sees text as it is produced.
+
+Events:
+
+| Event | Payload | Meaning |
+| ----- | ------- | ------- |
+| `delta` | `{text}` | A content fragment — append it |
+| `done`  | `{reconstructed\|summary, model, provider, elapsedMs, tokens, completionTokens, finishReason, requestId}` | Final, complete answer |
+| `error` | `{status, error, afterFirstDelta, requestId}` | The stream failed; `afterFirstDelta` says whether partial text was already sent |
+
+A `: keep-alive` comment is emitted every 10 s while the model is working.
+
+Behaviour worth knowing:
+
+- **Completion is verified.** A stream that ends without a terminal marker
+  (`[DONE]` or a `finish_reason`) is treated as a failure, never as a short
+  answer — a dropped connection can't be mistaken for a finished result or
+  cached as one.
+- **Client disconnects are terminal.** If the browser goes away, the upstream
+  read is aborted and nothing is cached.
+- **Failover happens only before the first delta.** Once text has been emitted
+  the response can no longer be swapped to another provider, so a failure at
+  that point is reported rather than silently retried — two models' outputs are
+  never spliced together.
+- **Validation errors still use normal HTTP statuses** (400/413/429/503); only
+  failures that happen after the stream has opened arrive as `error` events.
+- Set `window.YTTRANSCRIPT_STREAMING = false` in the browser to fall back to the
+  buffered endpoint without touching the server.
 
 ## Tests
 

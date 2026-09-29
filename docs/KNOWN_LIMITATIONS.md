@@ -61,9 +61,11 @@
     implemented in this iteration. Adding it requires abstracting
     `chat/completions` into `lib/providers/`.
 
-14. **No streaming response** — `/api/transform` waits for the full
-    LLM response before returning. Long transcripts can take 30-60 s.
-    Server-Sent Events streaming is the natural next step.
+14. **Streaming is implemented** — `/api/transform/stream` (SSE) delivers the
+    answer incrementally, which keeps the connection alive through a long model
+    prefill where the buffered route would be closed by the Cloudflare edge at
+    ~100 s. The buffered `/api/transform` remains available and is used as the
+    client-side fallback (`window.YTTRANSCRIPT_STREAMING = false`).
 
 15. **No chunking for the `/api/transform` path** — HEAD had chunked
     reconstruct for >150-snippet inputs; the current M (with retries +

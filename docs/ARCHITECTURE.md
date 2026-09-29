@@ -26,6 +26,7 @@
 │  GET  /api/build-version    - release metadata                 │
 │  GET  /api/transcript       - YouTube transcript fetch         │
 │  POST /api/transform        - LLM reconstruct / summarize      │
+│  POST /api/transform/stream - same, as Server-Sent Events      │
 │  POST /api/tts              - Piper TTS (optional, graceful)   │
 │  GET  /api/audio/:id        - Serve generated WAV              │
 │  GET  /                     - SPA recovery / index.html       │
@@ -33,6 +34,7 @@
 │  Helpers:                                                      │
 │  - withRetry (transient network)                               │
 │  - withTimeout (per request)                                   │
+│  - consumeOpenAiSse / fetchChatStream (sse-stream.js)          │
 │  - isOmlxMemoryPressureError (fallback model cascade)          │
 │  - In-memory cache (TTL via CACHE_TTL_MINUTES)                 │
 │  - Recovery HTML when build artifacts missing                  │
