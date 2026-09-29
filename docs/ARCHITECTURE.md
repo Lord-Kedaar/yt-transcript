@@ -24,7 +24,7 @@
 ┌────────────────────────────────────────────────────────────────┐
 │               Express server (server.js, :4000)                │
 │                                                                │
-│  GET  /api/health           - oMLX provider state + limits     │
+│  GET  /api/health           - provider state + limits          │
 │  GET  /api/build-version    - release metadata                 │
 │  GET  /api/transcript       - YouTube transcript fetch         │
 │  POST /api/transform        - LLM reconstruct / summarize      │
@@ -45,9 +45,11 @@
                   │ fetch                   │ (optional)
                   ▼                         ▼
 ┌──────────────────────────┐    ┌────────────────────────────┐
-│  oMLX (:8585)            │    │  Piper TTS (PIPER_BIN)     │
-│  OpenAI-compatible API   │    │  Models in PIPER_MODELS_DIR │
-│  gemma-4-12b-it-nvfp4    │    │  pl/en/de voices            │
+│  LLM providers           │    │  Piper TTS (PIPER_BIN)     │
+│  primary: Mistral        │    │  Models in PIPER_MODELS_DIR │
+│  fallback: oMLX (:8585)  │    │  pl/en/de voices            │
+│  both OpenAI-compatible  │    │                             │
+│  selected via LLM_PROVIDER / LLM_PROVIDER_FALLBACK            │
 └──────────────────────────┘    └────────────────────────────┘
 ```
 
@@ -63,10 +65,14 @@ but is not served; `vite` dev is deliberately disabled
 Rationale: the production-readiness story is simpler when there is exactly
 one port to expose via Cloudflare Tunnel and nothing to rebuild on deploy.
 
-### oMLX as the default LLM provider
+### Provider chain: Mistral primary, oMLX fallback
 
-We use oMLX (an Apple-Silicon-native MLX server) instead of LM Studio.
-The change happened in v3.x and the legacy `LM_STUDIO_URL` /
+`LLM_PROVIDER` selects the provider (default `mistral`); `LLM_PROVIDER_FALLBACK`
+adds a fallback chain (default `omlx`). The running configuration is therefore
+Mistral as primary with oMLX (an Apple-Silicon-native MLX server) as the local
+fallback. A provider-recovery state machine
+(`provider-state-machine.js`, PRIMARY → FALLBACK_OPEN → HALF_OPEN → PRIMARY)
+owns health probing and failover. The legacy `LM_STUDIO_URL` /
 `LM_STUDIO_MODEL` / `LM_STUDIO_API_KEY` env vars remain as fallbacks for
 backwards compatibility.
 
@@ -88,8 +94,9 @@ backwards compatibility.
 ### TTS is optional, not blocking
 
 `/api/tts` returns 503 with a clear hint when the Piper binary is missing.
-The frontend `useTTS` hook surfaces the error in console without
-breaking the rest of the UI.
+The active single-file UI surfaces the error without breaking the rest of the
+page. (An earlier React `useTTS` hook still exists in the inactive `client/`
+scaffold and is not the active implementation.)
 
 ## File layout
 
