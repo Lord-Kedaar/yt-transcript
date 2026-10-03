@@ -201,7 +201,10 @@ function detectLanguage(text) {
 // Stores IP hash + daily count; survives restarts; no Redis needed.
 const AI_DAILY_LIMIT_ENABLED = process.env.YTTRANSCRIPT_AI_DAILY_LIMIT_ENABLED === 'true';
 const AI_DAILY_LIMIT = Number(process.env.YTTRANSCRIPT_AI_DAILY_LIMIT) || 6;
-const AI_LIMIT_STORE_PATH = path.join(__dirname, '.ai-daily-limit.json');
+// Overridable so tests can run against a throwaway store instead of clobbering
+// the real one (defaults to the project-root file used in production).
+const AI_LIMIT_STORE_PATH =
+  process.env.YTTRANSCRIPT_AI_LIMIT_STORE || path.join(__dirname, '.ai-daily-limit.json');
 const AI_CONTACT_EMAIL = process.env.YTTRANSCRIPT_CONTACT_EMAIL || 'kontakt@radoslaw-pleskot.com';
 const PROJECT_DESCRIPTION_URL =
   process.env.YTTRANSCRIPT_PROJECT_DESCRIPTION_URL ||

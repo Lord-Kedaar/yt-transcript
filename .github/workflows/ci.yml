@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
   pull_request:
-    branches: [master]
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   lint-and-test:
@@ -15,7 +16,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -26,6 +27,12 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Server unit tests
+        # Covers diagnostics (incl. undici cause-chain classification),
+        # provider state machine and streaming. The daily-limit suite is
+        # excluded: it requires a live server on :4005 which CI does not run.
+        run: node --test test/diagnostics.test.js test/provider-state-machine.test.js test/streaming.test.js
 
       - name: Client tests
         run: npm test --prefix client
