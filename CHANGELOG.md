@@ -26,8 +26,8 @@
 
 ### Security
 
-- **Intended: remove hardcoded API key fallback** — the `'0456'` literal
-  in `OMLX_API_KEY = ... || '0456'` was a real-world anti-pattern
+- **Intended: remove hardcoded API key fallback** — the `'<omlx-key-redacted>'` literal
+  in `OMLX_API_KEY = ... || '<omlx-key-redacted>'` was a real-world anti-pattern
   (BURDEL rule: no secrets in repo). The fallback is now an empty
   string; operators must set the key in `.env` if their oMLX requires
   auth. _Note: this change was reported as done in 3.2.1 but the
@@ -53,7 +53,7 @@
   `PIPER_MODELS_DIR`; documents the `LM_STUDIO_*` legacy aliases.
 
 ### Security
-- **Phase 1: Remove hardcoded `'0456'` fallback** — replaced with
+- **Phase 1: Remove hardcoded `'<omlx-key-redacted>'` fallback** — replaced with
   empty string; oMLX allows unauthenticated requests locally.
 - **Phase 1: Bounded cache** — SHA-256/32 hash replaces base64 text
   as cache key; LRU eviction at 200 entries prevents unbounded growth.

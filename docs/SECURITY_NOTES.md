@@ -30,20 +30,20 @@ The app is a personal local prototype. Primary threats:
 
 > ⚠️ **Doc/code drift (corrected 2026-06-14):** the 2026-06-12 review
 > claimed the hardcoded fallback was removed, but the code at
-> `server.js:23` still contains `|| '0456'`. Moved back to "Still
+> `server.js:23` still contains `|| '<omlx-key-redacted>'`. Moved back to "Still
 > present". See audit follow-up plan in `README.md`.
 
 ### Resolved
 
 _(none as of 2026-06-14 — entries below were mis-categorized)_
 
-- ~~Hardcoded fallback API key `'0456'` removed (server.js:19)~~ —
+- ~~Hardcoded fallback API key `'<omlx-key-redacted>'` removed (server.js:19)~~ —
   **NOT RESOLVED**, see "Still present" below.
 
 ### Still present (acceptable for local prototype)
 
-- **Hardcoded fallback API key `'0456'` at `server.js:23`** — the line is
-  `const OMLX_API_KEY = process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY || '0456';`.
+- **Hardcoded fallback API key `'<omlx-key-redacted>'` at `server.js:23`** — the line is
+  `const OMLX_API_KEY = process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY || '<omlx-key-redacted>';`.
   Fine for personal local use (matches user's oMLX setup), but must be
   removed before any public/demo deploy. **Planned for removal in
   Phase 1 of the 2026-06-14 audit follow-up plan** (see `README.md`).
@@ -60,7 +60,7 @@ _(none as of 2026-06-14 — entries below were mis-categorized)_
 
 ```bash
 # Should return zero results in source code (excluding .env.example and docs):
-git grep -nE "(0456|sk-|api[_-]?key.*=.*['\"])" -- server.js client/src/
+git grep -nE "(<omlx-key-redacted>|sk-|api[_-]?key.*=.*['\"])" -- server.js client/src/
 ```
 
 Last secret audit: 2026-06-12. **PASS** — no secrets in tracked source.
