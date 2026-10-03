@@ -1,3 +1,34 @@
+## 2026-10-03 — ytTranscript + ekosystem: sprzątanie kopii, backup repo i KRYTYCZNY wyciek klucza API (271c2c0, 7850a0c)
+
+- **Co:** Polecenie: „na Maku Studio ma zostać sklonowane repozytorium zapasowe; nadliczbowe klony/kopie i śmieci wysprzątać". Wykonano inwentaryzację (read-only) **przed** jakimkolwiek kasowaniem i zweryfikowano każde usunięcie pod kątem odtwarzalności. **Przy okazji wykryto i załatano żywy wyciek sekretów do publicznego repo.**
+- **Projekt:** `yt-transcript` + porządki w `PORTFOLIO/` i `~/Library/Developer/XcodeBuildMCP/`
+- **Backup zapasowy (utworzony):** `/Users/radek/BACKUPS/yt-transcript.git` — `git clone --mirror` (644 KB, **133 commity, wszystkie 4 branche + tag v3.4.0**, zawiera wszystkie dzisiejsze naprawy). Weryfikacja: `git clone` z mirrora do `/tmp` odtworzył pełne drzewo i `diagnostics.js` z naprawą. Katalog `BACKUPS/` nie istniał wcześniej — utworzony jako kanoniczna lokalizacja kopii zapasowych repo.
+- **Usunięto (po weryfikacji odtwarzalności):**
+  - `Documents/Projects/yt-transcript.backup-pre-reconstruct-fix-20260719-120000` (208 MB) — wszystkie 11 untracked plików identycznych w main; unikalne tylko 3 regenerowalne pliki builda Vite
+  - `…yt-transcript.backup-pre-reconstruct-fix-20260719-001346` (208 MB) — jak wyżej
+  - `…yt-transcript.backup-pre-fallback-restore-20260720161757` (219 MB) — 14/14 untracked identycznych w main; `buildProviderChain` zastąpiony nowszym `createProviderStateMachine`; `AI_DAILY_LIMIT=5` → 6 to celowa zmiana, nie regresja
+  - `PORTFOLIO/portfolio-rp (backup)` (1.0 GB, z czego **918 MB node_modules**) — HEAD `1038782` jest przodkiem live; 2 miesiące stęchła (22 vs 82 commity)
+  - `PORTFOLIO/DEPRECATED/audit-backups/…/yt-transcript` (114 MB, 106 MB = `client/node_modules`)
+  - `PORTFOLIO/DEPRECATED/audit-backups/…/ai-discuss-stage` (96 MB, głównie node_modules) — HEAD `e43ce1d` przodek live
+  - `~/Library/Developer/XcodeBuildMCP/workspaces/yt-transcript-409ada0b11bf` (pusty, tylko `last-cleanup`)
+  - Razem **~2.1 GB**.
+- **Zachowano (unikalna treść, nieodtwarzalna z historii git):**
+  - `BACKUPS/yt-transcript-preserved-snapshots-20261003-153208/` — 3 snapshoty `*.backup-*`, których blobów **nie ma w żadnym commicie** historii (byte-exact search po 741 obiektach): `index.html.backup-20260621-before-v3.4.1-fix`, `server.js.backup-20260612-053711-…`, `server.js.backup-20260621-before-v3.4.1-fix`. + README z manifestem sha256.
+  - `BACKUPS/portfolio-rp-preserved-2026-07-08-20261003-153532/` — 4 pliki nieobecne w historii ani na dysku live: `EXECUTION_LEDGER.md` (SEO/perf, **referowany w `project-registry.md` 2026-07-10**), `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `test-canonical-hero.mjs`
+  - `BACKUPS/ai-discuss-stage-preserved-20261003-153629/` — wczesny monolityczny `backend/server.js` + bliźniaczy `.bak`
+- **KRYTYCZNE — wyciek sekretów do publicznego repo (naprawiony):**
+  - Repo `Lord-Kedaar/yt-transcript` jest **publiczne**. GitHub secret scanning alert **#1** (`mistral_ai_api_key`, `publicly_leaked: true`, otwarty **2026-07-20**) wskazywał `.env:11` w commitach `4b93fd5` i `afb786d`.
+  - `.env` był **śledzony w HEAD** i serwowany bez autoryzacji przez `raw.githubusercontent.com` (HTTP 200). Klucz Mistral **nadal aktywny** (test `GET /v1/models` → 200). Ten sam klucz na produkcji Lenovo (identyczny sha256).
+  - **Dodatkowo** klucz oMLX leżał w 3 śledzonych plikach dokumentacji: `CHANGELOG.md`, `docs/SECURITY_NOTES.md`, `docs/archive/…/CHANGELOG.md`.
+  - Naprawa: (1) `git rm --cached .env` + commit `271c2c0` — plik lokalny pozostał, `.gitignore` już go obejmował; (2) redakcja klucza oMLX do `<omlx-key-redacted>` w 3 dokumentach + commit `7850a0c`; (3) usunięcie 3 nieśledzonych kopii `.env` z drzewa (`docs/archive/…/.env`, `.env.test.backup`, `.env.backup-pre-fallback-*`) — wszystkie z żywymi kluczami; (4) redakcja klucza w 4 plikach poza repo (skill `hermes-runtime-reliability` w profilach metricus/conflux + 2 backupy w `06-artifacts`, 2 logi kanban).
+  - **Weryfikacja końcowa:** klucz Mistral występuje w **1 pliku** — canonical `.env` (gdzie ma być). W `origin/main` **zero** żywych sekretów w tracked files.
+  - **UWAGA — rotacja nadal wymagana:** redakcja nie cofa publikacji. Stare commity wciąż serwują klucz. **Klucz Mistral i oMLX wymagają rotacji u dostawcy** — patrz `NEXT_ACTIONS`.
+- **Build:** `node --check` OK; **testy 134/134 PASS, 0 fail**; lokalny health 200 + transcript 200; produkcja Lenovo `active/enabled` health 200; publiczny health 200.
+- **Plik:** `CHANGELOG.md`, `docs/SECURITY_NOTES.md`, `docs/archive/2026-06-21-before-task1/CHANGELOG.md`, `.gitignore`(wcześniej), `server.js`, `test/daily-limit.test.js`, `.github/workflows/ci.yml`; nowe: `BACKUPS/*`
+- **Raport:** brak osobnego raportu.
+- **Rollback:** mirror `BACKUPS/yt-transcript.git` pozwala odtworzyć dowolny stan; usunięcia kopii są nieodwracalne, ale każda zweryfikowana jako odtwarzalna (dowód w README-ach katalogów `*-preserved-*`).
+- **Status:** `DONE_WITH_LIMITATIONS` — sprzątanie i załatanie wycieku zweryfikowane; **rotacja kluczy pozostaje po stronie właściciela** (wymaga dostępu do konsoli Mistral).
+
 ## 2026-10-03 — ytTranscript: domknięcie case'a — nadzór produkcyjny, CI, dług testowy (263daea, 2e1dc0d)
 
 - **Co:** Dokończenie sprawy „Failed to fetch transcript." — po naprawie klasyfikacji błędów (`9771fd8`) zostały **cztery realne problemy systemowe**, wykryte przy weryfikacji. (1) **Produkcja bez nadzoru** — `yt-transcript.service` był `enabled`, ale **martwy od 2026-07-26** i wskazywał `WorkingDirectory` na **zamrożony katalog release** `yt-transcript-release-a558150-20260723T190911Z` (206 MB, kod bez naprawy). Produkcja od 2 miesięcy chodziła jako **proces manualny** (`setsid nohup node server.js`, rodzic = orphan `bash` z PPID 1). Po restarcie maszyny systemd podniósłby **dwumiesięczny kod z bugiem** → realna mina. Unit przepisany: canonical `WorkingDirectory=/srv/storage/AI_Projects/yt-transcript`, `ExecStart=/usr/bin/node server.js` (zamiast `npm start`, który przy każdym boocie przebudowywał klienta Vite — produkcja serwuje root `index.html`, nie `client/dist`), `Restart=always`, `StartLimitIntervalSec=0` w `[Unit]` (NFS może nie być zamontowany w chwili startu), logi do `~/.hermes/logs/yt-transcript.log`. (2) **CI nigdy się nie uruchamiało** — workflow celował w `master`, repo używa `main`; żaden push nie był weryfikowany. (3) **Dług testowy** — `test/daily-limit.test.js` zakładał serwer na :4005, którego nic nie podnosiło (5 z 5 awarii suite'u); teraz sam spawnuje serwer na :4015, czeka na `/api/health` i sprząta w `after()`. (4) **Wyciek runtime'owy** — `.ai-daily-limit.json` (hash IP per odwiedzający) **nie był w `.gitignore`**; `git add -A` skomitowałby identyfikatory gości. Dodatkowo `server.js` honoruje teraz `YTTRANSCRIPT_AI_LIMIT_STORE`, żeby testy nie nadpisywały produkcyjnego store'a.
