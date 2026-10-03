@@ -4,7 +4,12 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { createDiagnosticLogger, classifyError, publicTransformError } from './diagnostics.js';
+import {
+  createDiagnosticLogger,
+  classifyError,
+  publicTransformError,
+  isRetryableNetworkError,
+} from './diagnostics.js';
 import { createProviderStateMachine } from './provider-state-machine.js';
 import { fetchChatStream } from './sse-stream.js';
 
@@ -463,10 +468,12 @@ function isRetryableError(err) {
   }
 
   const message = getErrorMessage(err).toLowerCase();
-  // NOTE: do NOT match generic 'network' or 'fetch failed' — those appear in
-  // withRetry wrapper messages (e.g. "Groq chat failed...retrying...network")
-  // and cause false-positive retry loops. Real network errors from fetch() are
-  // distinguishable by their cause: AbortError (timeout), ECONNRESET, ETIMEDOUT.
+  // NOTE: do NOT match generic 'network' or 'fetch failed' on their own —
+  // those appear in withRetry wrapper messages (e.g. "Groq chat
+  // failed...retrying...network") and cause false-positive retry loops.
+  // Match the specific codes instead, including those undici nests under
+  // `err.cause` (a bare "fetch failed" carries no code of its own).
+  if (isRetryableNetworkError(err)) return true;
   return (
     message.includes('aborterror') ||
     message.includes('timed out') ||

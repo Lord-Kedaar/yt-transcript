@@ -10,17 +10,38 @@ export function classifyError(error) {
   const message = String(error?.message || error || '').toLowerCase();
   const code = String(error?.code || '').toUpperCase();
   const status = Number(error?.status || error?.statusCode || 0);
+  // undici hides the real code under `err.cause` (see collectErrorSignals).
+  const signals = collectErrorSignals(error);
 
-  if (error?.name === 'AbortError' || code === 'ABORT_ERR' || message.includes('aborted'))
-    return 'abort';
+  // Timeout is checked before abort on purpose: AbortSignal.timeout() rejects
+  // with a TimeoutError whose message reads "The operation was aborted due to
+  // timeout", so a plain 'aborted' substring test would swallow every timeout
+  // into 'abort'. A user-initiated cancel keeps name 'AbortError' and still
+  // lands in the abort branch below.
   if (
     error?.name === 'TimeoutError' ||
     code === 'ETIMEDOUT' ||
+    signals.has('ETIMEDOUT') ||
+    signals.has('TIMEOUTERROR') ||
     message.includes('timeout') ||
     message.includes('timed out')
   )
     return 'timeout';
-  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN' || message.includes('dns')) return 'dns';
+  if (
+    error?.name === 'AbortError' ||
+    code === 'ABORT_ERR' ||
+    signals.has('ABORT_ERR') ||
+    message.includes('aborted')
+  )
+    return 'abort';
+  if (
+    code === 'ENOTFOUND' ||
+    signals.has('ENOTFOUND') ||
+    code === 'EAI_AGAIN' ||
+    signals.has('EAI_AGAIN') ||
+    message.includes('dns')
+  )
+    return 'dns';
   if (code.startsWith('ERR_TLS') || message.includes('tls') || message.includes('certificate'))
     return 'tls';
   if (status === 401 || status === 403 || status === 429) return `http_${status}`;
@@ -37,6 +58,67 @@ export function classifyError(error) {
     return 'invalid_response';
   if (message.includes('empty response')) return 'empty_response';
   return 'unknown';
+}
+
+/**
+ * Network-layer failure signals that mean "the request never got an answer"
+ * and are worth retrying.
+ *
+ * Node's `fetch` (undici) hides the actionable code inside `err.cause`: the
+ * visible error is a bare `TypeError: fetch failed`, and the real code
+ * (ETIMEDOUT, ECONNRESET, UND_ERR_CONNECT_TIMEOUT, ...) sits in the cause —
+ * often inside an AggregateError's `errors` array, which holds one entry per
+ * resolved address (a host with 16 A/AAAA records produces 16 entries).
+ * Matching only on the top-level message therefore misses every network
+ * failure, which is how a recoverable blip becomes a hard 500 with no retry.
+ */
+export const RETRYABLE_NETWORK_SIGNALS = new Set([
+  'ETIMEDOUT',
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'EAI_AGAIN',
+  'ABORT_ERR',
+  'TIMEOUTERROR',
+  'ABORTERROR',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
+/**
+ * Collect error codes and error names from an error and its whole `cause`
+ * chain, including AggregateError member errors. Returned uppercased so a
+ * `code` ('ETIMEDOUT') and a `name` ('TimeoutError' -> 'TIMEOUTERROR') can be
+ * matched against a single signal set.
+ */
+export function collectErrorSignals(error, { maxDepth = 5 } = {}) {
+  const signals = new Set();
+  let node = error;
+  for (let depth = 0; node && typeof node === 'object' && depth < maxDepth; depth += 1) {
+    if (node.code) signals.add(String(node.code).toUpperCase());
+    if (node.name) signals.add(String(node.name).toUpperCase());
+    if (Array.isArray(node.errors)) {
+      for (const inner of node.errors) {
+        if (inner?.code) signals.add(String(inner.code).toUpperCase());
+        if (inner?.name) signals.add(String(inner.name).toUpperCase());
+      }
+    }
+    node = node.cause;
+  }
+  return signals;
+}
+
+/**
+ * Whether the failure is a transport-layer problem worth retrying, however
+ * deeply `fetch` nested the real cause.
+ */
+export function isRetryableNetworkError(error) {
+  if (!error || typeof error !== 'object') return false;
+  for (const signal of collectErrorSignals(error)) {
+    if (RETRYABLE_NETWORK_SIGNALS.has(signal)) return true;
+  }
+  return false;
 }
 
 export function sanitizeForLog(value, key = '') {
