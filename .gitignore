@@ -22,6 +22,12 @@ client/public/build-version.json
 *.backup-*
 backups/
 .audit/
+.backups/
+
+# Runtime state — IP-hash store for the demo quota. Never commit: it holds
+# per-visitor identifiers. (YTTRANSCRIPT_AI_LIMIT_STORE can relocate it.)
+.ai-daily-limit*.json
+.env.test.backup
 
 # Operational report artifacts (kept in docs/archive/<date>/ if relevant)
 METRICUS_*_REPORT.md
