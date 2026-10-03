@@ -538,3 +538,86 @@ test('buffered chat() still works unchanged (no regression)', async () => {
   assert.equal(result.providerName, 'P');
   assert.equal(sm.getState(), STATES.PRIMARY);
 });
+
+// ─── reasoningEffort forwarding (2026-10-03) ─────────────────────────
+//
+// Why this matters: the FreeLLMAPI default model (gpt-oss-20b) is a reasoning
+// model. Without a reasoning budget it prepends its chain-of-thought to the
+// answer ("We need to merge fragments into paragraphs..."), which is
+// user-visible garbage in the reconstruction panel. Measured on a real 150-
+// snippet chunk: 6/6 answers leaked. Sending reasoning_effort='low' produced
+// 6/6 clean answers.
+//
+// The field must reach the wire ONLY when the caller sets it — models that do
+// not understand it should never receive an explicit `undefined`.
+
+test('fetchChatStream omits reasoning_effort when not requested', async () => {
+  let sentBody = null;
+  const fetchImpl = async (_url, init) => {
+    sentBody = JSON.parse(init.body);
+    return sseResponse([
+      delta('ok'),
+      frame({ choices: [{ finish_reason: 'stop' }] }),
+      'data: [DONE]\n\n',
+    ]);
+  };
+  await fetchChatStream('http://x/v1/chat/completions', {
+    model: 'm',
+    messages: [],
+    fetchImpl,
+  });
+  assert.ok(sentBody, 'request body must be captured');
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(sentBody, 'reasoning_effort'),
+    false,
+    'reasoning_effort must be absent, not undefined-valued, when not requested',
+  );
+});
+
+test('fetchChatStream forwards reasoning_effort when requested', async () => {
+  let sentBody = null;
+  const fetchImpl = async (_url, init) => {
+    sentBody = JSON.parse(init.body);
+    return sseResponse([
+      delta('ok'),
+      frame({ choices: [{ finish_reason: 'stop' }] }),
+      'data: [DONE]\n\n',
+    ]);
+  };
+  await fetchChatStream('http://x/v1/chat/completions', {
+    model: 'openai/gpt-oss-20b',
+    messages: [{ role: 'user', content: 'hi' }],
+    reasoningEffort: 'low',
+    fetchImpl,
+  });
+  assert.equal(sentBody.reasoning_effort, 'low', 'reasoning_effort must reach the wire');
+  assert.equal(sentBody.model, 'openai/gpt-oss-20b');
+  assert.equal(sentBody.stream, true, 'streaming must stay enabled');
+});
+
+// ─── FreeLLMAPI health probe shape (2026-10-03) ──────────────────────
+//
+// The FreeLLMAPI health() used to POST a chat completion with max_tokens: 2.
+// On a reasoning model that truncates the reasoning budget before any content
+// is emitted, so a HEALTHY router answered 502 and the state machine flipped
+// the primary to FALLBACK_OPEN — the service looked broken while the router was
+// fine. It also burned real RPM/RPD quota on every probe.
+//
+// The probe must read /v1/models (GET), which is cheap and quota-free.
+
+test('FreeLLMAPI health probe reads /v1/models, not a chat completion', async () => {
+  const src = await readFile(new URL('../server.js', import.meta.url), 'utf8');
+  // Locate the FreeLLMAPI provider block and inspect only that region.
+  const start = src.indexOf('function buildFreeLLMAPIProvider()');
+  assert.ok(start !== -1, 'buildFreeLLMAPIProvider must exist');
+  const end = src.indexOf('// ── Mistral provider', start);
+  const block = src.slice(start, end === -1 ? undefined : end);
+
+  // Plain substring checks: the needle contains '/', so a regex literal would
+  // need escaping at every slash and is easy to get wrong.
+  assert.ok(block.includes('/v1/models'), 'health() must probe /v1/models');
+  assert.ok(
+    !/max_tokens:\s*2/.test(block),
+    'health() must not send a truncated chat completion (it 502s on reasoning models)',
+  );
+});

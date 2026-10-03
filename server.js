@@ -79,8 +79,19 @@ const OMLX_API_KEY = process.env.OMLX_API_KEY || process.env.LM_STUDIO_API_KEY |
 // Base URL of the FreeLLMAPI server + API key for Authorization header.
 const FREELLMAPI_URL = process.env.FREELLMAPI_URL || 'http://127.0.0.1:3001';
 const FREELLMAPI_API_KEY = process.env.FREELLMAPI_API_KEY || '';
-// 'auto' = FreeLLMAPI auto-selects the best free provider per request.
-const FREELLMAPI_MODEL = process.env.FREELLMAPI_MODEL || 'auto';
+// Which model FreeLLMAPI should route to. Plain 'auto' hands routing to the
+// router's own scoring, which on this install consistently picks a model that
+// leaks its chain-of-thought into `content` (dots-3-note-preview) — measured
+// 6/6 leaked answers on a real transcript chunk. Pinning a concrete model keeps
+// the output clean and the latency predictable.
+const FREELLMAPI_MODEL = process.env.FREELLMAPI_MODEL || 'openai/gpt-oss-20b';
+// Reasoning budget. gpt-oss is a reasoning model: without this it prepends
+// "We need to merge fragments..." to the reconstruction, which is exactly the
+// text the user must never see. 'low' keeps the answer clean and still fast
+// (measured 8.4s/chunk vs 6.6s with full reasoning but a corrupted answer).
+// Models that don't accept the field ignore it (verified against glm-4.5-flash
+// and ministral-14b-latest), so this is safe to send unconditionally.
+const FREELLMAPI_REASONING_EFFORT = process.env.FREELLMAPI_REASONING_EFFORT || 'low';
 
 // Mistral settings (used when LLM_PROVIDER=mistral)
 // OpenAI-compatible chat completions endpoint.
@@ -804,6 +815,7 @@ function buildFreeLLMAPIProvider() {
               messages,
               temperature: 0.1,
               max_tokens: 8192,
+              reasoning_effort: FREELLMAPI_REASONING_EFFORT,
             }),
           }),
         { attempts: 2, baseDelayMs: 1200, label: 'FreeLLMAPI chat', ...retryOpts },
@@ -817,6 +829,7 @@ function buildFreeLLMAPIProvider() {
         headers: { Authorization: `Bearer ${FREELLMAPI_API_KEY}` },
         model: FREELLMAPI_MODEL,
         messages,
+        reasoningEffort: FREELLMAPI_REASONING_EFFORT,
         onDelta,
         idleTimeoutMs,
         signal,
@@ -826,22 +839,22 @@ function buildFreeLLMAPIProvider() {
 
     async health() {
       try {
-        // FreeLLMAPI has no dedicated health endpoint; a lightweight /v1/models probe
-        // with an invalid key returns fast. We use a trivial chat call instead.
-        await fetchJsonOnce(`${FREELLMAPI_URL}/v1/chat/completions`, {
-          method: 'POST',
+        // Probe with GET /v1/models, NOT a chat completion.
+        //
+        // A chat-based probe is actively harmful here: (1) it burns the
+        // per-provider RPM/RPD budget that the real work needs, and (2) on a
+        // reasoning model a tiny max_tokens truncates the reasoning budget
+        // before any content is produced, so the provider answers 502 and the
+        // probe reports a healthy router as down. Measured with max_tokens=2:
+        // 502 after ~3s. /v1/models answers in ~40ms, costs no quota, and
+        // still distinguishes a bad key (401) from a healthy router (200).
+        const data = await fetchJsonOnce(`${FREELLMAPI_URL}/v1/models`, {
+          method: 'GET',
           timeoutMs: 8000,
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${FREELLMAPI_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: FREELLMAPI_MODEL,
-            messages: [{ role: 'user', content: 'ping' }],
-            max_tokens: 2,
-          }),
+          headers: { Authorization: `Bearer ${FREELLMAPI_API_KEY}` },
         });
-        return { ok: true, state: 'connected', loaded: true };
+        const models = Array.isArray(data?.data) ? data.data : [];
+        return { ok: true, state: 'connected', loaded: true, modelCount: models.length };
       } catch (err) {
         return {
           ok: false,

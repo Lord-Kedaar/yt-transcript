@@ -159,6 +159,7 @@ export async function fetchChatStream(
     messages,
     temperature = 0.1,
     maxTokens = 8192,
+    reasoningEffort,
     onDelta,
     idleTimeoutMs = 120000,
     headersTimeoutMs = 120000,
@@ -195,6 +196,10 @@ export async function fetchChatStream(
         temperature,
         max_tokens: maxTokens,
         stream: true,
+        // Only sent when a caller asks for it: providers that don't understand
+        // the field would reject an explicit `undefined` less gracefully than an
+        // absent key.
+        ...(reasoningEffort ? { reasoning_effort: reasoningEffort } : {}),
         // Verified on both Mistral and oMLX: returns `usage` in the final chunk.
         stream_options: { include_usage: true },
       }),
