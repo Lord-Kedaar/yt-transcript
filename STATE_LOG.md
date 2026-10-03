@@ -1,3 +1,23 @@
+## 2026-10-03 — ytTranscript: provider switch na FreeLLMAPI (Mac Studio) po wyłączeniu darmowego Mistrala (ac7e5f8)
+
+- **Co:** Mistral wyłączył na stałe darmowe API, więc provider primary przeniesiony na **FreeLLMAPI** działający lokalnie na Macu Studio (Docker, `127.0.0.1:3001`; dla tailnetu wystawiony jako `https://mac-studio.tailc245b7.ts.net:3001` — tak łączy się produkcja Lenovo).
+- **Wybór modelu — mierzony na REALNYM chunku 150 snippetów, promptem ytTranscript:**
+  - `auto` (domyślny router): na tej instalacji konsekwentnie wybiera `dots-3-note-preview` i **wycieka rozumowanie do treści** — 6/6 odpowiedzi zanieczyszczonych. Odrzucone.
+  - `openai/gpt-oss-20b` (GROQ → ollama): 20B, ctx 131k, speed_rank=2, iq=89. **Wybrane** — najlepsza latencja spośród czystych kandydatów.
+  - `reasoning_effort=low` **wymagane**: bez budżetu rozumowania model dokleja „We need to merge fragments..." do każdej rekonstrukcji. Z nim: **6/6 czyste, ~8.4 s/chunk, zero błędów**. Modele, które nie znają pola, ignorują je (sprawdzone na `glm-4.5-flash`, `ministral-14b-latest`).
+  - Odrzucone po pomiarach: `gemini-2.5-flash-lite` (szybki, ale rpd=20/dzień → 0/8 przy przepustowości), `qwen/qwen3.8-27b` (Groq, tpm=8000 → „too large" przy pełnym ładunku — ten sam powód, dla którego Groq usunięto w lipcu), `glm-4.5-flash` (stabilny, ale 15–32 s/chunk), `ministral-*` (rpm=2 → padają na chunkach 5–6 z 6).
+- **Dwa defekty znalezione i naprawione przy okazji:**
+  1. **Health probe FreeLLMAPI POSTował chat z `max_tokens: 2`** — na modelu reasoningowym to obcina budżet rozumowania przed jakąkolwiek treścią, więc **zdrowy router odpowiadał 502** i state machine przełączał primary na `FALLBACK_OPEN`. Dodatkowo każda sonda zjadała realne limity RPM/RPD. Teraz: `GET /v1/models` (~40 ms, zero kosztu kwotowego, nadal zwraca 401 dla złego klucza).
+  2. **`.env.example` zawierał ŻYWY klucz FreeLLMAPI w publicznym repo** (`origin/main`). Usunięty, wartość zastąpiona pustym polem z komentarzem.
+- **Projekt:** `yt-transcript` — Mac `/Users/radek/Documents/Projects/yt-transcript`; produkcja Lenovo `/srv/storage/AI_Projects/yt-transcript`
+- **Plik:** `server.js` (model + `reasoning_effort` + przepisany `health()`), `sse-stream.js` (przekazywanie `reasoningEffort` w strumieniu), `test/streaming.test.js` (3 nowe testy), `.env.example` (usunięty klucz + dokumentacja wyboru modelu), `.env` (Mac + Lenovo)
+- **Build:** `node --check` OK; ESLint czysty; Prettier czysty; **testy 137/137 PASS, 0 fail** (3 nowe: `reasoning_effort` przekazane / pominięte gdy nieustawione / health probe używa `/v1/models`)
+- **Preview:** **lokalny** `:4000` — health `provider=FreeLLMAPI activeProvider=FreeLLMAPI state=PRIMARY model=openai/gpt-oss-20b`; realny `/api/transform` reconstruct 6,3 s / 1638 znaków / **bez wycieku**; `/api/transform/stream` 428 delt w 4,9 s; summarize 4,7 s / 2118 znaków. **Produkcja Lenovo** PID 4103806 — `active`/`enabled`, ten sam stan providera; publiczny `https://yttranscript.radoslaw-pleskot.com/`: health OK, transcript 200, **realny transform przez Cloudflare OK** (1654 znaki, bez wycieku). Parzystość hashów Mac↔Lenovo dla `server.js` i `sse-stream.js`.
+- **Raport:** brak osobnego raportu.
+- **Rollback:** Mac — `.env` (przywrócić `LLM_PROVIDER=mistral`; kod jest kompatybilny wstecz, `buildMistralProvider()` nietknięty); Lenovo — `/srv/storage/AI_Projects/_archive/yt-transcript/20261003T161102Z-freellmapi/{server.js,sse-stream.js,.env}` + `systemctl --user restart yt-transcript.service`.
+- **Status:** `DONE_VERIFIED`
+- **Uwaga:** darmowy Mistral zostaje wyłączony — klucz Mistral w `.env` **wygasiliśmy celowo** (puste pole), bo dostawca i tak odrzuca żądania. Jeśli kiedyś wróci płatny plan, wystarczy wpisać klucz i zmienić `LLM_PROVIDER=mistral`. Klucz Mistral z wcześniejszego wycieku (alert GitHub #1) **nadal wymaga rotacji** — patrz wpis z 2026-10-03 o sprzątaniu.
+
 ## 2026-10-03 — ytTranscript + ekosystem: sprzątanie kopii, backup repo i KRYTYCZNY wyciek klucza API (271c2c0, 7850a0c)
 
 - **Co:** Polecenie: „na Maku Studio ma zostać sklonowane repozytorium zapasowe; nadliczbowe klony/kopie i śmieci wysprzątać". Wykonano inwentaryzację (read-only) **przed** jakimkolwiek kasowaniem i zweryfikowano każde usunięcie pod kątem odtwarzalności. **Przy okazji wykryto i załatano żywy wyciek sekretów do publicznego repo.**
