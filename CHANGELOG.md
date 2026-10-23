@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Usunięto popup informujący o wersji demo. Badge „demo”, serwerowy limit akcji AI i obsługa 429 pozostają bez zmian.
+
 ## 3.3.0 — 2026-06-20
 
 ### Providerzy LLM
