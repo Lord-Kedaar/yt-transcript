@@ -92,6 +92,17 @@ const FREELLMAPI_MODEL = process.env.FREELLMAPI_MODEL || 'openai/gpt-oss-20b';
 // Models that don't accept the field ignore it (verified against glm-4.5-flash
 // and ministral-14b-latest), so this is safe to send unconditionally.
 const FREELLMAPI_REASONING_EFFORT = process.env.FREELLMAPI_REASONING_EFFORT || 'low';
+// Header-phase timeout for streaming chat (ms).
+//
+// A pinned model name is a GROUP of platforms, not one upstream: FreeLLMAPI
+// routes each request to a member of the group (groq / ovh / nvidia / ...) using
+// its own router. Measured on this install, 1 call in 8 landed on a member that
+// accepted the connection and then never sent response headers, so a 120s bound
+// burned two full minutes before the fallback could take over (2026-10-23 and
+// 2026-10-24 incidents, both ~120s to first byte). Bounding only the header
+// phase — the idle guard still protects the body, so a long prefill on a big
+// transcript is not clipped — halves that wait.
+const FREELLMAPI_HEADERS_TIMEOUT_MS = Number(process.env.FREELLMAPI_HEADERS_TIMEOUT_MS || 60000);
 
 // Mistral settings (used when LLM_PROVIDER=mistral)
 // OpenAI-compatible chat completions endpoint.
@@ -824,12 +835,21 @@ function buildFreeLLMAPIProvider() {
       return { content: data?.choices?.[0]?.message?.content ?? '', raw: data, model };
     },
 
-    async chatStream(messages, { onDelta, signal, idleTimeoutMs = 120000 } = {}) {
+    async chatStream(
+      messages,
+      {
+        onDelta,
+        signal,
+        idleTimeoutMs = 120000,
+        headersTimeoutMs = FREELLMAPI_HEADERS_TIMEOUT_MS,
+      } = {},
+    ) {
       const result = await fetchChatStream(`${FREELLMAPI_URL}/v1/chat/completions`, {
         headers: { Authorization: `Bearer ${FREELLMAPI_API_KEY}` },
         model: FREELLMAPI_MODEL,
         messages,
         reasoningEffort: FREELLMAPI_REASONING_EFFORT,
+        headersTimeoutMs,
         onDelta,
         idleTimeoutMs,
         signal,

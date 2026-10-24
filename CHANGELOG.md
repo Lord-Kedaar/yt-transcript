@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Usunięto popup informujący o wersji demo. Badge „demo”, serwerowy limit akcji AI i obsługa 429 pozostają bez zmian.
+- **FreeLLMAPI: krótszy timeout fazy nagłówków.** Nowa zmienna `FREELLMAPI_HEADERS_TIMEOUT_MS` (domyślnie 60000 ms) ogranicza tylko oczekiwanie na nagłówki odpowiedzi streamingu — guard bezczynności ciała zostaje 120 s, więc długi prefill na dużym transkrypcie nie jest ucinany. Powód: nazwa modelu to grupa platform, a jedna z nich przyjmuje żądanie i nie odpowiada; poprzednie 120 s oznaczało dwie minuty czekania, zanim fallback przejął pracę.
 
 ## 3.3.0 — 2026-06-20
 
