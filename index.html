@@ -2613,8 +2613,14 @@
     }
 
     function mapHealthToState(data) {
-      // Offline / unavailable / both features false → offline.
-      if (!data || data.status !== 'ok' || !(data.providerDetails && data.providerDetails.ok)) return 'offline';
+      // The backend declares chain-level availability in `aiAvailable`:
+      // "AI offline" only when BOTH FreeLLMAPI and oMLX are down.
+      if (!data || data.status !== 'ok') return 'offline';
+      const available =
+        data.aiAvailable !== undefined
+          ? Boolean(data.aiAvailable)
+          : Boolean(data.providerDetails && data.providerDetails.ok);
+      if (!available) return 'offline';
       const f = (data.features || {});
       const reconstruct = !!f.reconstruct;
       const summarize   = !!f.summarize;
@@ -2628,7 +2634,10 @@
       applyProviderStatus('checking');
       try {
         const ctrl = new AbortController();
-        const tid = setTimeout(() => ctrl.abort(), 4000);
+        // The backend may probe the whole provider chain (active provider up to
+        // 8 s + a 6 s fallback probe). Aborting earlier than that turned a
+        // slow-but-healthy answer into a fake "AI · offline".
+        const tid = setTimeout(() => ctrl.abort(), 20000);
         let res;
         try {
           res = await fetch('/api/health', { signal: ctrl.signal, cache: 'no-store' });
@@ -2648,6 +2657,16 @@
         applyFeatureGating(!!(data.features && data.features.reconstruct), !!(data.features && data.features.summarize));
       } catch (err) {
         if (mySeq !== probeSeq) return;        // stale: discard failure
+        // A failed/timed-out probe is not proof that the AI is down: the probe
+        // itself crosses a flaky network path. Keep the last known state when
+        // we already have a real answer from the backend.
+        if (S.lastHealthInfo) {
+          applyProviderStatus(mapHealthToState(S.lastHealthInfo), {
+            ...S.lastHealthInfo,
+            error: String((err && err.message) || err),
+          });
+          return;
+        }
         applyProviderStatus('offline', { error: String((err && err.message) || err) });
         applyFeatureGating(false, false);
       }

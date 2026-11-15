@@ -11,6 +11,7 @@ import {
   isRetryableNetworkError,
 } from './diagnostics.js';
 import { createProviderStateMachine } from './provider-state-machine.js';
+import { probeProviderChain as probeChainHealth } from './chain-health.js';
 import { fetchChatStream } from './sse-stream.js';
 
 // Diagnostic logger instance — used for all JSONL event emission.
@@ -673,6 +674,10 @@ function buildLlmProvider() {
   return {
     name: chain[0].name,
     chain: chain.map(p => p.name),
+    // Raw provider objects (primary + every fallback). /api/health probes the
+    // whole list so "AI unavailable" means the WHOLE chain is down, not just
+    // the currently active provider.
+    providers: chain,
     // State-machine-backed health() — returns the active provider's health,
     // plus chain, activeProvider, and configuredProvider for observability.
     async health() {
@@ -1427,6 +1432,19 @@ app.get('/api/ai-limit-status', (req, res) => {
   });
 });
 
+// Bounded probe of every provider in the fallback chain.
+//
+// /api/health must answer "is the AI usable at all?", not "is the active
+// provider healthy right now?". The state machine moves the primary into
+// FALLBACK_OPEN after a single slow probe, and the probe crosses a network
+// path (Lenovo -> Mac over Tailscale) that stalls for seconds at a time. So
+// while the active provider is unhealthy we check the remaining chain members
+// with a hard timeout and treat the AI as available when ANY of them answers.
+async function probeProviderChain({ skipName = null } = {}) {
+  const providers = Array.isArray(llmProvider.providers) ? llmProvider.providers : [];
+  return probeChainHealth(providers, { skipName });
+}
+
 app.get('/api/health', async (req, res) => {
   noCache(res);
   const t0 = Date.now();
@@ -1468,9 +1486,14 @@ app.get('/api/health', async (req, res) => {
   const smState = typeof llmProvider.getState === 'function' ? llmProvider.getState() : null;
   const smCounters =
     typeof llmProvider.getCounters === 'function' ? llmProvider.getCounters() : null;
-  const mode = lmStatus.ok ? (smActiveName === 'oMLX' ? 'local' : 'remote') : 'unavailable';
+  // Chain-level availability. Probing the fallbacks costs an extra round trip,
+  // so it only runs when the active provider is not healthy.
+  const chainHealth = lmStatus.ok ? [] : await probeProviderChain({ skipName: smActiveName });
+  const fallbackOk = chainHealth.some(p => p.ok);
+  const aiAvailable = Boolean(lmStatus.ok || fallbackOk);
+  const mode = aiAvailable ? (smActiveName === 'oMLX' ? 'local' : 'remote') : 'unavailable';
   res.json({
-    status: lmStatus.ok ? 'ok' : 'degraded',
+    status: aiAvailable ? 'ok' : 'degraded',
     mode,
     features,
     latencyMs,
@@ -1481,7 +1504,16 @@ app.get('/api/health', async (req, res) => {
     configuredProvider: smConfiguredName,
     activeProvider: smActiveName,
     providerState: lmStatus.state,
-    providerDetails: lmStatus,
+    // `ok` now means "the AI is usable somewhere in the chain", not "the
+    // active provider answered". activeProviderOk keeps the old, narrower
+    // signal for diagnostics; chainHealth lists the fallback probes.
+    providerDetails: {
+      ...lmStatus,
+      ok: aiAvailable,
+      activeProviderOk: Boolean(lmStatus.ok),
+      chainHealth,
+    },
+    aiAvailable,
     // State machine state (PRIMARY / FALLBACK_OPEN / HALF_OPEN) and counters.
     providerStateMachine: smState,
     providerCounters: smCounters,
