@@ -105,6 +105,32 @@ const FREELLMAPI_REASONING_EFFORT = process.env.FREELLMAPI_REASONING_EFFORT || '
 // transcript is not clipped — halves that wait.
 const FREELLMAPI_HEADERS_TIMEOUT_MS = Number(process.env.FREELLMAPI_HEADERS_TIMEOUT_MS || 60000);
 
+// Ordered model rotation inside the router (comma-separated, tried in order).
+//
+// A pinned model name is a GROUP of platforms, and that group can be empty at
+// runtime. Measured on 2026-11-25: the `openai/gpt-oss-20b` group held a dead
+// cloudflare credential (401 on every attempt since 2026-10-03), an OVH key on
+// a 2 req/min budget (429) and a groq member whose 8k TPM ceiling cannot hold a
+// real transcript (~6.3k prompt tokens plus max_tokens). Two consecutive
+// summaries therefore ended on oMLX/gemma-4-26B — 15–33 s of model load and
+// prefill — while the same router had healthy members for other model names.
+//
+// Rotating the requested NAME before handing the whole provider over keeps the
+// answer inside FreeLLMAPI (same endpoint, key and quota pool) and reserves the
+// provider-level fallback for a router that is genuinely down.
+const FREELLMAPI_CANDIDATE_MODELS = [
+  FREELLMAPI_MODEL,
+  ...String(process.env.FREELLMAPI_FALLBACK_MODELS || 'openai/gpt-oss-120b,gemini-2.5-flash-lite')
+    .split(',')
+    .map(name => name.trim())
+    .filter(Boolean),
+].filter((model, index, list) => list.indexOf(model) === index);
+
+// Wall-clock budget for the whole rotation, counted from the first attempt.
+// Cloudflare closes an idle SSE stream at ~100 s, so the rotation must either
+// land a working model inside that window or hand over to the next provider.
+const FREELLMAPI_ROTATION_BUDGET_MS = Number(process.env.FREELLMAPI_ROTATION_BUDGET_MS || 75000);
+
 // Mistral settings (used when LLM_PROVIDER=mistral)
 // OpenAI-compatible chat completions endpoint.
 const MISTRAL_URL = process.env.MISTRAL_URL || 'https://api.mistral.ai/v1';
@@ -814,30 +840,70 @@ function buildOmlxProvider() {
 // ── FreeLLMAPI provider ───────────────────────────────────────────
 
 function buildFreeLLMAPIProvider() {
+  // One shared report so chat() and chatStream() log the same shape.
+  const reportRotation = (fromModel, toModel, err) => {
+    const cause = getErrorMessage(err);
+    console.warn(
+      `[llm] FreeLLMAPI model '${fromModel}' failed (${cause}); trying '${toModel}'.`,
+    );
+    diagnostics.event('warn', 'provider.model.rotation', {
+      provider: 'FreeLLMAPI',
+      fromModel,
+      toModel,
+      errorClassification: classifyError(err),
+      technicalCause: cause.slice(0, 300),
+    });
+  };
+
   return {
     name: 'FreeLLMAPI',
+    // Candidate order is part of the provider contract: the first entry is the
+    // configured pin, the rest are the router model names tried in order.
+    candidateModels: FREELLMAPI_CANDIDATE_MODELS,
+
     async chat(messages, { timeoutMs = 120000, retryOpts = {} } = {}) {
-      const data = await withRetry(
-        () =>
-          fetchJsonOnce(`${FREELLMAPI_URL}/v1/chat/completions`, {
-            method: 'POST',
-            timeoutMs,
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${FREELLMAPI_API_KEY}`,
-            },
-            body: JSON.stringify({
-              model: FREELLMAPI_MODEL,
-              messages,
-              temperature: 0.1,
-              max_tokens: 8192,
-              reasoning_effort: FREELLMAPI_REASONING_EFFORT,
-            }),
-          }),
-        { attempts: 2, baseDelayMs: 1200, label: 'FreeLLMAPI chat', ...retryOpts },
-      );
-      const model = data?.model || FREELLMAPI_MODEL;
-      return { content: data?.choices?.[0]?.message?.content ?? '', raw: data, model };
+      const deadline = Date.now() + FREELLMAPI_ROTATION_BUDGET_MS;
+      let lastError = null;
+      let previousModel = null;
+      for (const model of FREELLMAPI_CANDIDATE_MODELS) {
+        // The budget only gates the ROTATION — the first candidate always runs.
+        if (lastError && Date.now() >= deadline) break;
+        if (previousModel) reportRotation(previousModel, model, lastError);
+        try {
+          // attempts:1 per candidate on purpose. Retrying the same name
+          // re-enters the same dead group member; spending that retry on the
+          // next model name is what actually recovers the answer.
+          const data = await withRetry(
+            () =>
+              fetchJsonOnce(`${FREELLMAPI_URL}/v1/chat/completions`, {
+                method: 'POST',
+                timeoutMs,
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${FREELLMAPI_API_KEY}`,
+                },
+                body: JSON.stringify({
+                  model,
+                  messages,
+                  temperature: 0.1,
+                  max_tokens: 8192,
+                  reasoning_effort: FREELLMAPI_REASONING_EFFORT,
+                }),
+              }),
+            { attempts: 1, baseDelayMs: 0, label: `FreeLLMAPI chat (${model})`, ...retryOpts },
+          );
+          return {
+            content: data?.choices?.[0]?.message?.content ?? '',
+            raw: data,
+            model: data?.model || model,
+          };
+        } catch (err) {
+          lastError = err;
+          previousModel = model;
+          if (err?.name === 'AbortError') break;
+        }
+      }
+      throw lastError ?? new Error('FreeLLMAPI: no candidate model is configured.');
     },
 
     async chatStream(
@@ -845,21 +911,40 @@ function buildFreeLLMAPIProvider() {
       {
         onDelta,
         signal,
+        hasEmitted,
         idleTimeoutMs = 120000,
         headersTimeoutMs = FREELLMAPI_HEADERS_TIMEOUT_MS,
       } = {},
     ) {
-      const result = await fetchChatStream(`${FREELLMAPI_URL}/v1/chat/completions`, {
-        headers: { Authorization: `Bearer ${FREELLMAPI_API_KEY}` },
-        model: FREELLMAPI_MODEL,
-        messages,
-        reasoningEffort: FREELLMAPI_REASONING_EFFORT,
-        headersTimeoutMs,
-        onDelta,
-        idleTimeoutMs,
-        signal,
-      });
-      return { ...result, model: FREELLMAPI_MODEL };
+      const deadline = Date.now() + FREELLMAPI_ROTATION_BUDGET_MS;
+      let lastError = null;
+      let previousModel = null;
+      for (const model of FREELLMAPI_CANDIDATE_MODELS) {
+        if (lastError && Date.now() >= deadline) break;
+        if (previousModel) reportRotation(previousModel, model, lastError);
+        try {
+          const result = await fetchChatStream(`${FREELLMAPI_URL}/v1/chat/completions`, {
+            headers: { Authorization: `Bearer ${FREELLMAPI_API_KEY}` },
+            model,
+            messages,
+            reasoningEffort: FREELLMAPI_REASONING_EFFORT,
+            headersTimeoutMs,
+            onDelta,
+            idleTimeoutMs,
+            signal,
+          });
+          return { ...result, model };
+        } catch (err) {
+          lastError = err;
+          previousModel = model;
+          // Rotating after the first delta would splice two different answers
+          // into one response, and an aborted client has nobody to answer to.
+          const partiallyDelivered =
+            typeof hasEmitted === 'function' ? hasEmitted() : false;
+          if (err?.name === 'AbortError' || signal?.aborted || partiallyDelivered) break;
+        }
+      }
+      throw lastError ?? new Error('FreeLLMAPI: no candidate model is configured.');
     },
 
     async health() {
